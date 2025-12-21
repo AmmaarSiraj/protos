@@ -15,7 +15,7 @@ import {
   FaCheckCircle
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
 const getToken = () => localStorage.getItem('token');
 
 // Helper Formatter Rupiah

@@ -11,7 +11,7 @@ import {
 // Components
 import Footer from '../components/Footer';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
 
 // --- GAMBAR DEFAULT (FALLBACK) ---
 const DEFAULT_BG = "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070&auto=format&fit=crop";
@@ -90,7 +90,7 @@ const Home = () => {
     // Hapus leading slash jika ada untuk menghindari double slash
     const cleanPath = path.startsWith('/') ? path.substring(1) : path;
     
-    // Hasil: https://makinasik.sidome.id/storage/uploads/system/foto.jpg
+    // Hasil: http://makinasik.web.bps.go.id/storage/uploads/system/foto.jpg
     return `${API_URL}/storage/${cleanPath}`;
   };
 

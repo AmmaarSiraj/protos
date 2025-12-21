@@ -43,7 +43,7 @@ const AddUser = () => {
       }
 
       await axios.post(
-        'https://makinasik.sidome.id/api/users', 
+        'http://makinasik.web.bps.go.id/api/users', 
         {
           username,
           email,

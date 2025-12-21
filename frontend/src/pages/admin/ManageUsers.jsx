@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2'; 
 import { FaDownload, FaFileUpload, FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
 
-const API_URL = 'https://makinasik.sidome.id/api';
+const API_URL = 'http://makinasik.web.bps.go.id/api';
 const getToken = () => localStorage.getItem('token');
 
 const ManageUsers = () => {

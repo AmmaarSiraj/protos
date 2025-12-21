@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { FaMoneyBillWave, FaFilter, FaSearch, FaUserTie, FaIdBadge, FaCalendarAlt } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
 
 const TransaksiMitra = () => {
   const navigate = useNavigate();
