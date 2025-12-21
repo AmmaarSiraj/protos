@@ -1,0 +1,202 @@
+// src/pages/admin/AddUser.jsx
+import { useState } from 'react';
+import axios from 'axios';
+import { Link, useNavigate } from 'react-router-dom';
+import Swal from 'sweetalert2'; // Opsional: Agar notifikasi lebih cantik
+import { 
+  FaArrowLeft, 
+  FaUser, 
+  FaEnvelope, 
+  FaLock, 
+  FaUserShield, 
+  FaPlus, 
+  FaExclamationCircle 
+} from 'react-icons/fa';
+
+const AddUser = () => {
+  const navigate = useNavigate(); 
+  
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState('user');
+  
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSubmitting(true);
+
+    if (!username || !email || !password) {
+      setError('Semua field wajib diisi.');
+      setSubmitting(false);
+      return;
+    }
+
+    try {
+      // 1. AMBIL TOKEN DARI LOCAL STORAGE
+      const token = localStorage.getItem('token');
+
+      if (!token) {
+        throw new Error("Token tidak ditemukan. Silakan login ulang.");
+      }
+
+      // 2. SERTAKAN HEADER AUTHORIZATION
+      await axios.post(
+        'https://makinasik.sidome.id/api/users', 
+        {
+          username,
+          email,
+          password,
+          role
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`, // <--- PENTING: Token wajib ada di sini
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      // Berhasil
+      Swal.fire('Sukses', 'User berhasil ditambahkan', 'success');
+      navigate('/admin/manage-users');
+
+    } catch (err) {
+      console.error("Gagal menambah user:", err);
+      
+      // Handle jika sesi habis (401)
+      if (err.response && err.response.status === 401) {
+          setError("Sesi Anda telah berakhir. Silakan login kembali.");
+          // Opsional: Redirect ke login jika perlu
+          // navigate('/login');
+      } else {
+          setError(err.response?.data?.message || "Gagal menambah user. Silakan coba lagi.");
+      }
+      
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto w-full">
+      
+      {/* Tombol Kembali */}
+      <div className="mb-6">
+        <Link 
+          to="/admin/manage-users" 
+          className="inline-flex items-center gap-2 text-gray-500 hover:text-[#1A2A80] transition font-medium"
+        >
+          <FaArrowLeft size={14} /> Kembali ke Manajemen User
+        </Link>
+      </div>
+
+      {/* Card Form */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        
+        {/* Header Card */}
+        <div className="px-8 py-6 bg-gray-50/50 border-b border-gray-100">
+            <h2 className="text-xl font-bold text-gray-800">Tambah User Baru</h2>
+            <p className="text-sm text-gray-500 mt-1">Buat akun untuk admin atau mitra baru.</p>
+        </div>
+
+        <div className="p-8">
+            {error && (
+                <div className="bg-red-50 text-red-600 px-4 py-3 rounded-lg mb-6 border border-red-100 text-sm flex items-center gap-2">
+                    <FaExclamationCircle /> {error}
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-6">
+                
+                {/* Username */}
+                <div>
+                    <label htmlFor="username" className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                        <FaUser className="text-[#1A2A80]" /> Username
+                    </label>
+                    <input
+                        type="text"
+                        id="username"
+                        className="block w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] transition outline-none bg-gray-50 focus:bg-white"
+                        placeholder="Contoh: budi_santoso"
+                        value={username}
+                        onChange={(e) => setUsername(e.target.value)}
+                        required
+                    />
+                </div>
+
+                {/* Email */}
+                <div>
+                    <label htmlFor="email" className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                        <FaEnvelope className="text-[#1A2A80]" /> Alamat Email
+                    </label>
+                    <input
+                        type="email"
+                        id="email"
+                        className="block w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] transition outline-none bg-gray-50 focus:bg-white"
+                        placeholder="email@example.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                    />
+                </div>
+
+                {/* Password */}
+                <div>
+                    <label htmlFor="password" className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                        <FaLock className="text-[#1A2A80]" /> Password
+                    </label>
+                    <input
+                        type="password"
+                        id="password"
+                        className="block w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] transition outline-none bg-gray-50 focus:bg-white"
+                        placeholder="Minimal 6 karakter"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                    />
+                </div>
+
+                {/* Role */}
+                <div>
+                    <label htmlFor="role" className="block text-xs font-bold text-gray-500 uppercase mb-2 flex items-center gap-2">
+                        <FaUserShield className="text-[#1A2A80]" /> Role / Hak Akses
+                    </label>
+                    <div className="relative">
+                        <select
+                            id="role"
+                            className="block w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] transition outline-none bg-white appearance-none"
+                            value={role}
+                            onChange={(e) => setRole(e.target.value)}
+                        >
+                            <option value="user">User (Mitra)</option>
+                            <option value="admin">Admin (Pengelola)</option>
+                        </select>
+                        {/* Custom Arrow */}
+                        <div className="absolute inset-y-0 right-0 flex items-center px-4 pointer-events-none text-gray-500">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Submit Button */}
+                <div className="pt-4 border-t border-gray-100 flex justify-end">
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        className="flex items-center gap-2 bg-[#1A2A80] hover:bg-blue-900 text-white font-bold py-3 px-8 rounded-xl shadow-lg transform active:scale-95 transition disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                        {submitting ? 'Menyimpan...' : <><FaPlus /> Tambah User</>}
+                    </button>
+                </div>
+
+            </form>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default AddUser;
