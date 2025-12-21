@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { FaUser, FaEnvelope, FaLock } from 'react-icons/fa';
-import ReCAPTCHA from "react-google-recaptcha"; // IMPORT CAPTCHA
+import ReCAPTCHA from "react-google-recaptcha"; 
 import logoSikinerja from '../assets/logo.png'; 
 
-// KONFIGURASI URL API & SITE KEY
 const API_BASE_URL = 'https://makinasik.sidome.id/api';
-// Ganti string kosong dibawah dengan Site Key dari Google Admin Console Anda
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LevnTEsAAAAAD4R4bwkbDN2hhaWK5W1UYcTdXei";
 
 const AuthPage = () => {
@@ -27,14 +25,13 @@ const AuthPage = () => {
   // --- STATE UI & CAPTCHA ---
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [captchaValue, setCaptchaValue] = useState(null); // State untuk menyimpan token captcha
+  const [captchaValue, setCaptchaValue] = useState(null); 
 
   // HANDLER LOGIN
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
 
-    // 1. Validasi Captcha
     if (!captchaValue) {
         setError("Silakan centang 'Saya bukan robot' terlebih dahulu.");
         return;
@@ -46,7 +43,7 @@ const AuthPage = () => {
       const response = await axios.post(`${API_BASE_URL}/users/login`, { 
         email: loginEmail, 
         password: loginPassword,
-        recaptcha_token: captchaValue // Kirim token ke backend (opsional)
+        recaptcha_token: captchaValue 
       });
       
       if (response.data && response.data.access_token) {
@@ -72,8 +69,6 @@ const AuthPage = () => {
       setError(errorMsg);
     } finally {
       setLoading(false);
-      // Reset captcha jika gagal (opsional, tapi disarankan)
-      // setCaptchaValue(null); 
     }
   };
 
@@ -87,7 +82,6 @@ const AuthPage = () => {
       return;
     }
 
-    // 1. Validasi Captcha
     if (!captchaValue) {
         setError("Silakan centang 'Saya bukan robot' terlebih dahulu.");
         return;
@@ -105,9 +99,8 @@ const AuthPage = () => {
       
       alert("Registrasi berhasil! Silakan login.");
       setIsSignUp(false);
-      setCaptchaValue(null); // Reset captcha
+      setCaptchaValue(null); 
       
-      // Reset form register
       setRegUsername(''); 
       setRegEmail(''); 
       setRegPassword(''); 
@@ -124,7 +117,6 @@ const AuthPage = () => {
     }
   };
 
-  // Helper untuk reset error & captcha saat pindah tab
   const toggleMode = (mode) => {
       setIsSignUp(mode);
       setError('');
@@ -132,16 +124,16 @@ const AuthPage = () => {
   }
 
   return (
-    // FULL SCREEN BACKGROUND
     <div className="h-screen w-screen bg-gradient-to-br from-blue-50 to-indigo-200 flex items-center justify-center p-4 font-sans overflow-hidden">
       
       {/* CONTAINER UTAMA */}
       <div className="relative bg-white rounded-3xl shadow-2xl w-full max-w-4xl h-[650px] overflow-hidden flex flex-col md:flex-row">
         
         {/* --- FORM REGISTER (Sign Up) --- */}
+        {/* PERBAIKAN: Menambahkan 'md:' pada translate-x-full agar efek slide hanya terjadi di desktop */}
         <div 
           className={`absolute top-0 h-full transition-all duration-700 ease-in-out w-full md:w-1/2 left-0 
-          ${isSignUp ? "translate-x-full opacity-100 z-20" : "opacity-0 z-0"}`}
+          ${isSignUp ? "md:translate-x-full opacity-100 z-20" : "opacity-0 z-0"}`}
         >
           <form onSubmit={handleRegister} className="bg-white flex flex-col items-center justify-center h-full px-8 text-center overflow-y-auto custom-scrollbar">
             <h1 className="text-2xl font-bold text-[#1A2A80] mb-2 mt-4">Buat Akun</h1>
@@ -194,7 +186,6 @@ const AuthPage = () => {
               </div>
             </div>
 
-            {/* CAPTCHA REGISTER */}
             <div className="mt-4 mb-2 flex justify-center transform scale-90 origin-center">
                 <ReCAPTCHA
                     sitekey={RECAPTCHA_SITE_KEY}
@@ -215,9 +206,10 @@ const AuthPage = () => {
         </div>
 
         {/* --- FORM LOGIN (Sign In) --- */}
+        {/* PERBAIKAN: Menambahkan 'md:' pada translate-x-full agar efek slide hanya terjadi di desktop */}
         <div 
           className={`absolute top-0 h-full transition-all duration-700 ease-in-out w-full md:w-1/2 left-0 z-10 
-          ${isSignUp ? "translate-x-full opacity-0" : "opacity-100"}`}
+          ${isSignUp ? "md:translate-x-full opacity-0" : "opacity-100"}`}
         >
           <form onSubmit={handleLogin} className="bg-white flex flex-col items-center justify-center h-full px-8 text-center overflow-y-auto custom-scrollbar">
             <div className="mb-4 mt-4">
@@ -251,11 +243,6 @@ const AuthPage = () => {
               </div>
             </div>
 
-            <div className="my-2 w-full text-right">
-                <a href="#" className="text-xs text-gray-500 hover:text-[#1A2A80] transition-colors">Lupa Password?</a>
-            </div>
-
-            {/* CAPTCHA LOGIN */}
             <div className="mb-4 flex justify-center transform scale-90 origin-center">
                 <ReCAPTCHA
                     sitekey={RECAPTCHA_SITE_KEY}

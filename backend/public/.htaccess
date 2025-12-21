@@ -1,3 +1,12 @@
+<IfModule mod_headers.c>
+    # 1. Matikan aturan CSP bawaan hosting (jika bisa)
+    Header unset Content-Security-Policy
+    
+    # 2. Pasang aturan baru: Izinkan SEMUA (Google, Inline Script, Eval, dll)
+    # Ini akan membuat script Google reCAPTCHA dan React kamu diizinkan berjalan.
+    Header always set Content-Security-Policy "default-src * data: blob: 'unsafe-inline' 'unsafe-eval'"
+</IfModule>
+
 <IfModule mod_rewrite.c>
     <IfModule mod_negotiation.c>
         Options -MultiViews -Indexes
