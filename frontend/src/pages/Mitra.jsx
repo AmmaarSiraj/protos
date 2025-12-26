@@ -10,10 +10,12 @@ import {
   FaCalendarAlt,
   FaChevronDown,
   FaUser,
-  FaAddressCard
+  FaAddressCard,
+  FaChevronLeft,
+  FaChevronRight
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const Mitra = () => {
   const [mitraList, setMitraList] = useState([]);
@@ -23,6 +25,10 @@ const Mitra = () => {
   const currentYear = new Date().getFullYear();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedYear, setSelectedYear] = useState(currentYear);
+
+  // --- State Pagination ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // Opsi Tahun (Mundur 2 tahun, Maju 1 tahun)
   const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
@@ -58,9 +64,8 @@ const Mitra = () => {
   // Filter Logika Gabungan
   const filteredMitra = useMemo(() => {
     if (!Array.isArray(mitraList)) return [];
-    if (!selectedYear) return [];
-
-    return mitraList.filter(item => {
+    
+    const result = mitraList.filter(item => {
       // 1. Cek Tahun Aktif
       const historyYears = item.riwayat_tahun ? String(item.riwayat_tahun).split(',').map(y => y.trim()) : [];
       const isActiveInYear = historyYears.includes(String(selectedYear));
@@ -76,7 +81,23 @@ const Mitra = () => {
 
       return isSearchMatch;
     });
+
+    // Reset ke halaman 1 setiap kali filter berubah
+    setCurrentPage(1);
+    return result;
   }, [mitraList, searchTerm, selectedYear]);
+
+  // --- Logika Slice Data untuk Pagination ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = filteredMitra.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredMitra.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
+    }
+  };
 
   // Helper Sensor NIK
   const maskNIK = (nik) => {
@@ -94,7 +115,6 @@ const Mitra = () => {
   };
 
   return (
-    // Container aligned with Design System (max-w-7xl)
     <div className="w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6 pb-20">
       
       {/* HEADER & FILTER SECTION */}
@@ -115,9 +135,7 @@ const Mitra = () => {
 
           <hr className="border-gray-100 mb-6" />
 
-          {/* Filter Inputs */}
           <div className="flex flex-col md:flex-row gap-4">
-             {/* Year Dropdown */}
              <div className="relative min-w-[180px]">
                 <FaCalendarAlt className="absolute left-4 top-3.5 text-gray-400" />
                 <select
@@ -132,7 +150,6 @@ const Mitra = () => {
                 <FaChevronDown className="absolute right-4 top-4 text-gray-400 text-xs pointer-events-none" />
              </div>
 
-             {/* Search Input */}
              <div className="relative flex-grow">
                 <FaSearch className="absolute left-4 top-3.5 text-gray-400" />
                 <input
@@ -148,7 +165,6 @@ const Mitra = () => {
 
       {/* DATA TABLE */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Table Header Stats */}
         <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center gap-4">
             <h3 className="font-bold text-gray-800 flex items-center gap-2 uppercase text-sm tracking-wide">
                 <FaUserTie className="text-[#1A2A80]" /> Hasil Pencarian
@@ -158,7 +174,6 @@ const Mitra = () => {
             </span>
         </div>
 
-        {/* Table Content */}
         <div className="overflow-x-auto">
             <table className="min-w-full text-sm text-left">
                 <thead className="bg-white text-gray-500 border-b border-gray-100 uppercase text-xs font-bold tracking-wider">
@@ -178,7 +193,7 @@ const Mitra = () => {
                                 </div>
                             </td>
                         </tr>
-                    ) : filteredMitra.length === 0 ? (
+                    ) : currentData.length === 0 ? (
                         <tr>
                             <td colSpan="3" className="text-center py-16">
                                 <div className="flex flex-col items-center justify-center text-gray-300">
@@ -193,7 +208,7 @@ const Mitra = () => {
                             </td>
                         </tr>
                     ) : (
-                        filteredMitra.map((item, idx) => (
+                        currentData.map((item, idx) => (
                             <tr key={item.id || idx} className="hover:bg-blue-50/30 transition-colors group">
                                 <td className="px-6 py-5 align-top">
                                     <div className="flex items-start gap-4">
@@ -241,6 +256,37 @@ const Mitra = () => {
                 </tbody>
             </table>
         </div>
+
+        {/* --- SECTION PAGINATION (Sama seperti ManajemenMitra.jsx) --- */}
+        {!loading && filteredMitra.length > 0 && (
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="text-sm text-gray-600 font-medium">
+              Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredMitra.length)} dari <span className="font-bold text-gray-800">{filteredMitra.length}</span> data
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <FaChevronLeft size={14} />
+              </button>
+
+              <span className="px-4 py-2 text-sm font-bold bg-white border border-gray-200 rounded-lg text-gray-700 shadow-sm">
+                Halaman {currentPage} / {totalPages}
+              </span>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <FaChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
     </div>

@@ -5,7 +5,7 @@ import { FaUser, FaEnvelope, FaLock } from 'react-icons/fa';
 import ReCAPTCHA from "react-google-recaptcha"; 
 import logoSikinerja from '../assets/logo.png'; 
 
-const API_BASE_URL = 'http://makinasik.web.bps.go.id/api';
+const API_BASE_URL = 'https://makinasik.web.bps.id/api';
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LevnTEsAAAAAD4R4bwkbDN2hhaWK5W1UYcTdXei";
 
 const AuthPage = () => {
@@ -222,8 +222,8 @@ const AuthPage = () => {
               <div className="bg-gray-100 p-3 rounded-lg flex items-center border border-transparent focus-within:border-[#1A2A80] transition-colors">
                 <FaEnvelope className="text-gray-400 mr-2" />
                 <input 
-                  type="email" 
-                  placeholder="Email" 
+                  type="text" 
+                  placeholder="Email / Username" 
                   className="bg-transparent outline-none text-sm flex-1 text-gray-700" 
                   value={loginEmail} 
                   onChange={e => setLoginEmail(e.target.value)} 

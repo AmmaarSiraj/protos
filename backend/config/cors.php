@@ -6,7 +6,7 @@ return[
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'http://makinasik.web.bps.go.id',
+        'https://makinasik.web.bps.id',
         'http://makinasik.sidome.id',
         'http://127.0.0.1:5173',
         'http://localhost:5173',

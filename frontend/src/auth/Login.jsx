@@ -12,7 +12,7 @@ const Login = () => {
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
   const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY; // Ambil key dari .env
 
   const handleLogin = async (e) => {

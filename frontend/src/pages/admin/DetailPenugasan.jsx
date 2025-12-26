@@ -10,7 +10,7 @@ import {
   FaBoxOpen, FaChartBar, FaTasks, FaEdit, FaExclamationCircle
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 const getToken = () => localStorage.getItem('token');
 
 // --- KOMPONEN DIAGRAM LINGKARAN (PIE CHART) ---

@@ -12,7 +12,7 @@ import {
   FaClock
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 const getToken = () => localStorage.getItem('token');
 
 const DetailUser = () => {
@@ -31,7 +31,7 @@ const DetailUser = () => {
         const response = await axios.get(`${API_URL}/api/users/${id}`, {
             headers: { Authorization: `Bearer ${token}` }
         });
-        setUserData(response.data);
+        setUserData(response.data.data);
       } catch (err) {
         console.error(err);
         setError(err.response?.data?.message || 'Gagal mengambil data user');

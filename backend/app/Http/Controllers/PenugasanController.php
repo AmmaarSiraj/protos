@@ -7,23 +7,25 @@ use App\Models\Perencanaan;
 use App\Models\KelompokPenugasan;
 use App\Models\Mitra;
 use App\Models\Subkegiatan;
+use App\Models\Kegiatan;
+use App\Models\JabatanMitra;
+use App\Models\Honorarium;
+use App\Models\AturanPeriode;
 use App\Models\TahunAktif;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
-use Maatwebsite\Excel\Facades\Excel; 
+use Maatwebsite\Excel\Facades\Excel;
+use Illuminate\Support\Facades\Log; 
 
 class PenugasanController extends Controller
 {
-    /**
-     * 1. GET ALL PENUGASAN
-     */
     public function index()
     {
         $penugasan = Penugasan::with(['subkegiatan.kegiatan', 'pengawas'])
-            ->latest()
+            ->latest('updated_at')
             ->get();
 
         $formattedData = $penugasan->map(function ($item) {
@@ -33,14 +35,11 @@ class PenugasanController extends Controller
         return response()->json(['status' => 'success', 'data' => $formattedData]);
     }
 
-    /**
-     * 2. CREATE PENUGASAN MANUAL
-     */
     public function store(Request $request)
     {
         $validator = Validator::make($request->all(), [
             'id_subkegiatan' => 'required|exists:subkegiatan,id',
-            'id_pengawas'    => 'required|exists:user,id',
+            'id_pengawas'    => 'required|exists:user,id', // Tabel 'user' tunggal
             'anggota'        => 'nullable|array',
             'anggota.*.id_mitra'     => 'required|exists:mitra,id',
             'anggota.*.kode_jabatan' => 'required|exists:jabatan_mitra,kode_jabatan',
@@ -53,18 +52,15 @@ class PenugasanController extends Controller
 
         DB::beginTransaction();
         try {
-            // Buat Header Penugasan
             $penugasan = Penugasan::create([
                 'id_subkegiatan' => $request->id_subkegiatan,
                 'id_pengawas'    => $request->id_pengawas,
                 'status_penugasan' => 'menunggu'
             ]);
 
-            // Masukkan Anggota Tim
             if ($request->has('anggota') && is_array($request->anggota)) {
                 foreach ($request->anggota as $anggota) {
                     $vol = isset($anggota['volume_tugas']) ? intval($anggota['volume_tugas']) : 0;
-
                     KelompokPenugasan::create([
                         'id_penugasan' => $penugasan->id,
                         'id_mitra'     => $anggota['id_mitra'],
@@ -88,43 +84,14 @@ class PenugasanController extends Controller
     }
 
     /**
-     * 3. PREVIEW IMPORT (FIXED COLUMN NAME & ENCODING)
+     * 3. PREVIEW IMPORT (PERBAIKAN LIMIT SESUAI TAHUN KEGIATAN)
      */
     public function previewImport(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt,xlsx,xls',
-            'id_subkegiatan' => 'required|exists:subkegiatan,id'
+            'file' => 'required|file|mimes:csv,txt,xlsx,xls'
         ]);
 
-        $idSubkegiatan = $request->id_subkegiatan;
-        $subkegiatan = Subkegiatan::findOrFail($idSubkegiatan);
-        $tahunKegiatan = date('Y', strtotime($subkegiatan->tanggal_mulai));
-
-        // A. Ambil Referensi Jabatan & Honor di Subkegiatan ini
-        $allowedJabatan = DB::table('honorarium as h')
-            ->join('jabatan_mitra as j', 'h.kode_jabatan', '=', 'j.kode_jabatan')
-            ->where('h.id_subkegiatan', $idSubkegiatan)
-            ->select('j.nama_jabatan', 'j.kode_jabatan', 'h.tarif')
-            ->get()
-            ->mapWithKeys(function ($item) {
-                return [Str::lower(trim($item->nama_jabatan)) => [
-                    'kode' => $item->kode_jabatan,
-                    'tarif' => $item->tarif,
-                    'nama_resmi' => $item->nama_jabatan
-                ]];
-            });
-
-        // B. Cek Data Existing (untuk validasi duplikat)
-        $existingPenugasan = Penugasan::where('id_subkegiatan', $idSubkegiatan)->first();
-        $existingMitraIds = [];
-        if ($existingPenugasan) {
-            $existingMitraIds = KelompokPenugasan::where('id_penugasan', $existingPenugasan->id)
-                ->pluck('id_mitra')
-                ->toArray();
-        }
-
-        // C. BACA FILE
         try {
             $data = Excel::toArray([], $request->file('file'));
             $rows = $data[0] ?? [];
@@ -132,90 +99,204 @@ class PenugasanController extends Controller
             return response()->json(['message' => 'Gagal membaca file: ' . $e->getMessage()], 400);
         }
 
-        if (empty($rows)) {
-            return response()->json(['message' => 'File kosong.'], 400);
+        if (count($rows) < 2) { 
+            return response()->json(['message' => 'File kosong atau format salah.'], 400);
         }
 
-        // Hapus Header
-        $headerRow = array_shift($rows); 
-        
+        array_shift($rows); 
+
         $validData = [];
         $warnings = [];
 
+        $allKegiatan = Kegiatan::all()->keyBy(fn($item) => Str::lower(trim($item->nama_kegiatan)));
+        $allJabatan = JabatanMitra::all(); 
+        
+        // Hapus logika pengambilan limit global di sini (sebelumnya salah ambil tahun sekarang)
+
         foreach ($rows as $index => $row) {
-            if (count($row) < 3 || (empty($row[0]) && empty($row[1]))) continue;
+            if (empty($row[0]) && empty($row[2])) continue;
 
-            $sobatId = trim((string)$row[0]); 
-            $namaLengkap = trim((string)$row[1]);
-            $posisiText = Str::lower(trim((string)$row[2]));
+            $namaKegiatan = trim((string)$row[0]);
+            $namaSub      = trim((string)$row[1]);
+            $sobatId      = trim((string)$row[2]);
+            $namaJabatan  = trim((string)$row[3]);
+            $volume       = isset($row[4]) ? (int)$row[4] : 1; 
+            $rowNum       = $index + 2;
 
-            // 1. Cari Mitra
-            $mitra = Mitra::where('sobat_id', $sobatId)->first();
-            
-            if (!$mitra) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra ID '$sobatId' ($namaLengkap) tidak ditemukan.";
+            $kegiatan = $allKegiatan[Str::lower($namaKegiatan)] ?? null;
+            if (!$kegiatan) {
+                $warnings[] = "Baris $rowNum: Kegiatan '$namaKegiatan' tidak ditemukan.";
                 continue;
             }
 
-            // 2. Validasi Aktif (FIXED: column 'status' bukan 'status_aktif')
+            $subkegiatan = Subkegiatan::where('id_kegiatan', $kegiatan->id)
+                ->where(DB::raw('LOWER(nama_sub_kegiatan)'), Str::lower($namaSub))
+                ->first();
+
+            if (!$subkegiatan) {
+                $warnings[] = "Baris $rowNum: Sub Kegiatan '$namaSub' tidak ditemukan.";
+                continue;
+            }
+
+            $mitra = Mitra::where('sobat_id', $sobatId)->first();
+            if (!$mitra) {
+                $warnings[] = "Baris $rowNum: Mitra ID '$sobatId' tidak ditemukan.";
+                continue;
+            }
+
+            // --- PERBAIKAN PENGAMBILAN TAHUN & LIMIT ---
+            $tahunKegiatan = date('Y', strtotime($subkegiatan->tanggal_mulai));
+            
+            // Ambil Aturan Periode SESUAI TAHUN KEGIATAN ini
+            $aturan = AturanPeriode::where('periode', $tahunKegiatan)->first();
+            $batasHonor = $aturan ? (float)$aturan->batas_honor : 0; 
+            // ------------------------------------------
+
             $isAktif = TahunAktif::where('user_id', $mitra->id)
                 ->where('tahun', $tahunKegiatan)
-                ->where('status', 'aktif') // <--- PERBAIKAN DI SINI
+                ->where('status', 'aktif')
                 ->exists();
 
             if (!$isAktif) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra '$namaLengkap' TIDAK AKTIF di tahun $tahunKegiatan.";
+                $warnings[] = "Baris $rowNum: Mitra tidak aktif pada tahun $tahunKegiatan.";
                 continue;
             }
 
-            // 3. Validasi Jabatan
-            $matchedJabatan = null;
-            if (isset($allowedJabatan[$posisiText])) {
-                $matchedJabatan = $allowedJabatan[$posisiText];
+            $kodeJabatan = null;
+            $namaJabatanResmi = null;
+            $jabatanMatch = $allJabatan->first(fn($j) => Str::lower($j->nama_jabatan) === Str::lower($namaJabatan)) 
+                         ?? $allJabatan->first(fn($j) => str_contains(Str::lower($namaJabatan), Str::lower($j->nama_jabatan)));
+
+            if ($jabatanMatch) {
+                $kodeJabatan = $jabatanMatch->kode_jabatan;
+                $namaJabatanResmi = $jabatanMatch->nama_jabatan;
             } else {
-                foreach ($allowedJabatan as $key => $val) {
-                    if (str_contains($posisiText, $key) || str_contains($key, $posisiText)) {
-                         $matchedJabatan = $val;
-                         break;
-                    }
-                }
-                
-                if (!$matchedJabatan) {
-                    $warnings[] = "Baris " . ($index + 2) . ": Posisi '$row[2]' tidak terdaftar di honorarium.";
-                    continue;
-                }
-            }
-
-            // 4. Validasi Duplikasi
-            if (in_array($mitra->id, $existingMitraIds)) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra '$namaLengkap' sudah ada di tim ini.";
+                $warnings[] = "Baris $rowNum: Jabatan '$namaJabatan' tidak dikenali.";
                 continue;
             }
+
+            $honorarium = Honorarium::where('id_subkegiatan', $subkegiatan->id)
+                ->where('kode_jabatan', $kodeJabatan)
+                ->first();
+            
+            $tarif = $honorarium ? $honorarium->tarif : 0;
+            $targetVol = $honorarium ? $honorarium->basis_volume : 0; 
+
+            $existingVol = DB::table('kelompok_penugasan as kp')
+                ->join('penugasan as p', 'kp.id_penugasan', '=', 'p.id')
+                ->where('p.id_subkegiatan', $subkegiatan->id)
+                ->sum('kp.volume_tugas');
+
+            $bulanKegiatan = date('m', strtotime($subkegiatan->tanggal_mulai));
+            $existingIncome = DB::table('kelompok_penugasan as kp')
+                ->join('penugasan as p', 'kp.id_penugasan', '=', 'p.id')
+                ->join('subkegiatan as s', 'p.id_subkegiatan', '=', 's.id')
+                ->leftJoin('honorarium as h', function ($join) {
+                    $join->on('h.id_subkegiatan', '=', 's.id')
+                         ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
+                })
+                ->where('kp.id_mitra', $mitra->id)
+                ->whereYear('s.tanggal_mulai', $tahunKegiatan)
+                ->whereMonth('s.tanggal_mulai', $bulanKegiatan)
+                ->where('p.status_penugasan', 'disetujui') 
+                ->sum(DB::raw('kp.volume_tugas * IFNULL(h.tarif, 0)'));
+
+            $newIncome = $volume * $tarif;
+            $totalVol = $existingVol + $volume;
+            $totalIncome = $existingIncome + $newIncome;
+
+            $isOverVolume = ($targetVol > 0 && $totalVol > $targetVol);
+            $isOverLimit  = ($batasHonor > 0 && $totalIncome > $batasHonor);
 
             $validData[] = [
-                'id_mitra' => $mitra->id,
-                'sobat_id' => $mitra->sobat_id,
-                'nama_lengkap' => $mitra->nama_lengkap,
-                'kode_jabatan' => $matchedJabatan['kode'],
-                'nama_jabatan' => $matchedJabatan['nama_resmi'],
-                'volume_tugas' => 1,
-                'harga_satuan' => $matchedJabatan['tarif']
+                'id_subkegiatan'    => $subkegiatan->id,
+                'nama_kegiatan'     => $kegiatan->nama_kegiatan,
+                'nama_sub_kegiatan' => $subkegiatan->nama_sub_kegiatan,
+                'id_mitra'          => $mitra->id,
+                'nama_mitra'        => $mitra->nama_lengkap,
+                'sobat_id'          => $mitra->sobat_id,
+                'kode_jabatan'      => $kodeJabatan,
+                'nama_jabatan'      => $namaJabatanResmi,
+                'volume'            => $volume,
+                'stats' => [
+                    'target_vol'      => $targetVol,
+                    'existing_vol'    => $existingVol, 
+                    'limit_honor'     => $batasHonor, // Limit ini sekarang dinamis sesuai tahun kegiatan
+                    'existing_income' => $existingIncome,
+                    'new_income'      => $newIncome,
+                    'is_over_volume'  => $isOverVolume,
+                    'is_over_limit'   => $isOverLimit
+                ]
             ];
         }
 
         return response()->json([
-            'status' => 'success',
-            'subkegiatan' => $subkegiatan,
             'valid_data' => $validData,
-            'warnings' => $warnings,
-            'total_processed' => count($rows),
-            'total_valid' => count($validData)
+            'warnings'   => $warnings
         ]);
     }
 
-    /**
-     * 4. IMPORT DARI PERENCANAAN
-     */
+    public function storeImport(Request $request)
+    {
+        Log::info("=== START IMPORT PENUGASAN ===");
+        
+        $request->validate([
+            'data' => 'required|array',
+            'data.*.id_subkegiatan' => 'required',
+            'data.*.id_mitra' => 'required'
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $count = 0;
+            $grouped = collect($request->data)->groupBy('id_subkegiatan');
+
+            foreach ($grouped as $subId => $items) {
+                // Gunakan ID user login, atau fallback ID 1 jika ID 1 ada di DB
+                $userId = $request->user() ? $request->user()->id : 1; 
+                
+                // Pastikan user ada di DB untuk menghindari FK error
+                if (!DB::table('user')->where('id', $userId)->exists()) {
+                    $firstUser = DB::table('user')->first();
+                    $userId = $firstUser ? $firstUser->id : $userId; 
+                }
+
+                $penugasan = Penugasan::firstOrCreate(
+                    ['id_subkegiatan' => $subId],
+                    [
+                        'id_pengawas' => $userId,
+                        'status_penugasan' => 'menunggu'
+                    ]
+                );
+
+                $penugasan->touch(); 
+
+                foreach ($items as $item) {
+                    KelompokPenugasan::updateOrCreate(
+                        [
+                            'id_penugasan' => $penugasan->id,
+                            'id_mitra'     => $item['id_mitra']
+                        ],
+                        [
+                            'kode_jabatan' => $item['kode_jabatan'],
+                            'volume_tugas' => $item['volume']
+                        ]
+                    );
+                    $count++;
+                }
+            }
+
+            DB::commit();
+            Log::info("=== IMPORT SUKSES: $count Data Tersimpan ===");
+            return response()->json(['status' => 'success', 'message' => "$count data berhasil diimport ke penugasan."]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error("!!! IMPORT ERROR !!! " . $e->getMessage());
+            return response()->json(['message' => 'Gagal menyimpan: ' . $e->getMessage()], 500);
+        }
+    }
+
     public function importFromPerencanaan(Request $request)
     {
         $validator = Validator::make($request->all(), [
@@ -240,6 +321,8 @@ class PenugasanController extends Controller
                     ['id_subkegiatan' => $perencanaan->id_subkegiatan],
                     ['id_pengawas' => $perencanaan->id_pengawas, 'updated_at'  => now()]
                 );
+                
+                $penugasan->touch();
                 $countHeader++;
 
                 foreach ($perencanaan->kelompok as $anggotaPlan) {
@@ -268,91 +351,58 @@ class PenugasanController extends Controller
         }
     }
 
-    /**
-     * 5. GET DETAIL PENUGASAN
-     */
-    public function show($id)
-    {
-        $data = $this->formatSingle($id);
-        if (!$data) {
-            return response()->json(['message' => 'Data tidak ditemukan'], 404);
-        }
-        return response()->json(['status' => 'success', 'data' => $data]);
-    }
-
-    /**
-     * 6. UPDATE PENUGASAN
-     */
-    public function update(Request $request, $id)
+    public function destroy($id)
     {
         $penugasan = Penugasan::find($id);
         if (!$penugasan) {
             return response()->json(['message' => 'Data tidak ditemukan'], 404);
         }
 
-        $validator = Validator::make($request->all(), [
-            'status_penugasan' => 'nullable|in:menunggu,disetujui',
-            'id_subkegiatan'   => 'nullable|exists:subkegiatan,id',
-            'id_pengawas'      => 'nullable|exists:user,id',
-        ]);
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        try {
-            $penugasan->update($request->only(['status_penugasan', 'id_subkegiatan', 'id_pengawas']));
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Penugasan berhasil diperbarui.',
-                'data' => $this->formatItem($penugasan)
-            ]);
-        } catch (\Exception $e) {
-            return response()->json(['message' => 'Gagal update: ' . $e->getMessage()], 500);
-        }
+        $penugasan->delete();
+        return response()->json(['status' => 'success', 'message' => 'Penugasan berhasil dihapus.']);
     }
 
-    /**
-     * 7. GET ANGGOTA
-     */
+    public function show($id)
+    {
+        $data = $this->formatSingle($id);
+        if (!$data) return response()->json(['message' => 'Data tidak ditemukan'], 404);
+        return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
+    public function update(Request $request, $id)
+    {
+        $penugasan = Penugasan::find($id);
+        if (!$penugasan) return response()->json(['message' => 'Data tidak ditemukan'], 404);
+
+        $penugasan->update($request->only(['status_penugasan', 'id_subkegiatan', 'id_pengawas']));
+        return response()->json(['status' => 'success', 'data' => $this->formatItem($penugasan)]);
+    }
+
     public function getAnggota($id)
     {
-        try {
-            $anggota = DB::table('kelompok_penugasan as kp')
-                ->join('mitra as m', 'kp.id_mitra', '=', 'm.id')
-                ->join('penugasan as p', 'kp.id_penugasan', '=', 'p.id')
-                ->leftJoin('jabatan_mitra as jm', 'kp.kode_jabatan', '=', 'jm.kode_jabatan')
-                ->leftJoin('honorarium as h', function ($join) {
-                    $join->on('h.id_subkegiatan', '=', 'p.id_subkegiatan')
-                        ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
-                })
-                ->where('kp.id_penugasan', $id)
-                ->select([
-                    'm.id as id_mitra',
-                    'm.nama_lengkap',
-                    'm.nik',
-                    'm.nomor_hp',
-                    'kp.id as id_kelompok',
-                    'kp.created_at as bergabung_sejak',
-                    'kp.kode_jabatan',
-                    'kp.volume_tugas',
-                    DB::raw("IFNULL(jm.nama_jabatan, 'Belum ditentukan') as nama_jabatan"),
-                    DB::raw("IFNULL(h.tarif, 0) as harga_satuan"),
-                    DB::raw("(IFNULL(h.tarif, 0) * kp.volume_tugas) as total_honor")
-                ])
-                ->orderBy('m.nama_lengkap', 'asc')
-                ->get();
+        $anggota = DB::table('kelompok_penugasan as kp')
+            ->join('mitra as m', 'kp.id_mitra', '=', 'm.id')
+            ->join('penugasan as p', 'kp.id_penugasan', '=', 'p.id')
+            ->leftJoin('jabatan_mitra as jm', 'kp.kode_jabatan', '=', 'jm.kode_jabatan')
+            ->leftJoin('honorarium as h', function ($join) {
+                $join->on('h.id_subkegiatan', '=', 'p.id_subkegiatan')
+                     ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
+            })
+            ->where('kp.id_penugasan', $id)
+            ->select([
+                'm.id as id_mitra', 'm.nama_lengkap', 'm.nik', 'm.nomor_hp',
+                'kp.id as id_kelompok', 'kp.created_at as bergabung_sejak',
+                'kp.kode_jabatan', 'kp.volume_tugas',
+                DB::raw("IFNULL(jm.nama_jabatan, 'Belum ditentukan') as nama_jabatan"),
+                DB::raw("IFNULL(h.tarif, 0) as harga_satuan"),
+                DB::raw("(IFNULL(h.tarif, 0) * kp.volume_tugas) as total_honor")
+            ])
+            ->orderBy('m.nama_lengkap', 'asc')
+            ->get();
 
-            return response()->json($anggota);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Terjadi kesalahan: ' . $e->getMessage()], 500);
-        }
+        return response()->json($anggota);
     }
 
-    /**
-     * 8. GET FOR CETAK SPK (FILTERED)
-     */
     public function getByMitraAndPeriode($id_mitra, $periode)
     {
         try {
@@ -373,15 +423,12 @@ class PenugasanController extends Controller
                         ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
                 })
                 ->leftJoin('satuan_kegiatan as sat', 'h.id_satuan', '=', 'sat.id')
-                
-                // FILTERING
                 ->where('kp.id_mitra', $id_mitra)
                 ->whereYear('s.tanggal_mulai', $year)
                 ->whereMonth('s.tanggal_mulai', $month)
                 ->where('p.status_penugasan', 'disetujui') 
-
                 ->select([
-                    'k.nama_kegiatan', // <--- DITAMBAHKAN: Nama Survei/Sensus (Induk)
+                    'k.nama_kegiatan', 
                     's.nama_sub_kegiatan',
                     's.tanggal_mulai',
                     's.tanggal_selesai',
@@ -405,21 +452,6 @@ class PenugasanController extends Controller
         }
     }
 
-    /**
-     * 9. DELETE PENUGASAN
-     */
-    public function destroy($id)
-    {
-        $penugasan = Penugasan::find($id);
-        if (!$penugasan) {
-            return response()->json(['message' => 'Data tidak ditemukan'], 404);
-        }
-
-        $penugasan->delete();
-        return response()->json(['status' => 'success', 'message' => 'Penugasan berhasil dihapus.']);
-    }
-
-    // HELPER FUNCTIONS
     private function formatSingle($id)
     {
         $item = Penugasan::with(['subkegiatan.kegiatan', 'pengawas'])->find($id);
@@ -433,6 +465,7 @@ class PenugasanController extends Controller
             'id_penugasan'         => $item->id,
             'status_penugasan'     => $item->status_penugasan ?? 'menunggu', 
             'penugasan_created_at' => $item->created_at,
+            'updated_at'           => $item->updated_at,
             'id_subkegiatan'       => $item->subkegiatan ? $item->subkegiatan->id : null,
             'nama_sub_kegiatan'    => $item->subkegiatan ? $item->subkegiatan->nama_sub_kegiatan : '-',
             'tanggal_mulai'        => $item->subkegiatan && $item->subkegiatan->tanggal_mulai

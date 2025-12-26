@@ -4,7 +4,7 @@ import axios from 'axios';
 import Swal from 'sweetalert2';
 import FileUploader from '../../components/FileUploader';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ManajemenSistem = () => {
   const [images, setImages] = useState({ home_background: null, app_logo: null });

@@ -8,6 +8,8 @@ use App\Models\Honorarium;
 use App\Models\AturanPeriode;
 use App\Models\Mitra;
 use App\Models\Subkegiatan;
+use App\Models\Kegiatan;
+use App\Models\JabatanMitra;
 use App\Models\TahunAktif;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -83,43 +85,14 @@ class PerencanaanController extends Controller
     }
 
     /**
-     * FITUR IMPORT (Sama seperti Penugasan)
+     * IMPORT: Preview dengan Limit Honor Dinamis (Sesuai Tahun Kegiatan)
      */
     public function previewImport(Request $request)
     {
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt,xlsx,xls',
-            'id_subkegiatan' => 'required|exists:subkegiatan,id'
+            'file' => 'required|file|mimes:csv,txt,xlsx,xls'
         ]);
 
-        $idSubkegiatan = $request->id_subkegiatan;
-        $subkegiatan = Subkegiatan::findOrFail($idSubkegiatan);
-        $tahunKegiatan = date('Y', strtotime($subkegiatan->tanggal_mulai));
-
-        // 1. Ambil Referensi Jabatan & Honor
-        $allowedJabatan = DB::table('honorarium as h')
-            ->join('jabatan_mitra as j', 'h.kode_jabatan', '=', 'j.kode_jabatan')
-            ->where('h.id_subkegiatan', $idSubkegiatan)
-            ->select('j.nama_jabatan', 'j.kode_jabatan', 'h.tarif')
-            ->get()
-            ->mapWithKeys(function ($item) {
-                return [Str::lower(trim($item->nama_jabatan)) => [
-                    'kode' => $item->kode_jabatan,
-                    'tarif' => $item->tarif,
-                    'nama_resmi' => $item->nama_jabatan
-                ]];
-            });
-
-        // 2. Cek Data Existing di Perencanaan
-        $existingPerencanaan = Perencanaan::where('id_subkegiatan', $idSubkegiatan)->first();
-        $existingMitraIds = [];
-        if ($existingPerencanaan) {
-            $existingMitraIds = KelompokPerencanaan::where('id_perencanaan', $existingPerencanaan->id)
-                ->pluck('id_mitra')
-                ->toArray();
-        }
-
-        // 3. Baca File dengan Library Excel
         try {
             $data = Excel::toArray([], $request->file('file'));
             $rows = $data[0] ?? [];
@@ -127,85 +100,180 @@ class PerencanaanController extends Controller
             return response()->json(['message' => 'Gagal membaca file: ' . $e->getMessage()], 400);
         }
 
-        if (empty($rows)) {
-            return response()->json(['message' => 'File kosong.'], 400);
+        if (count($rows) < 2) { 
+            return response()->json(['message' => 'File kosong atau format salah.'], 400);
         }
 
-        // Hapus Header
-        $headerRow = array_shift($rows);
-        
+        array_shift($rows); 
+
         $validData = [];
         $warnings = [];
 
+        $allKegiatan = Kegiatan::all()->keyBy(fn($item) => Str::lower(trim($item->nama_kegiatan)));
+        $allJabatan = JabatanMitra::all(); 
+
         foreach ($rows as $index => $row) {
-            if (count($row) < 3 || (empty($row[0]) && empty($row[1]))) continue;
-
-            $sobatId = trim((string)$row[0]); 
-            $namaLengkap = trim((string)$row[1]);
-            $posisiText = Str::lower(trim((string)$row[2]));
-
-            // A. Cari Mitra
-            $mitra = Mitra::where('sobat_id', $sobatId)->first();
             
+            if (empty($row[0]) && empty($row[2])) continue;
+
+            $namaKegiatan = trim((string)$row[0]);
+            $namaSub      = trim((string)$row[1]);
+            $sobatId      = trim((string)$row[2]);
+            $namaJabatan  = trim((string)$row[3]);
+            $volume       = isset($row[4]) ? (int)$row[4] : 1; 
+
+            $rowNum = $index + 2;
+
+            $kegiatan = $allKegiatan[Str::lower($namaKegiatan)] ?? null;
+            if (!$kegiatan) {
+                $warnings[] = "Baris $rowNum: Kegiatan '$namaKegiatan' tidak ditemukan di sistem.";
+                continue;
+            }
+
+            $subkegiatan = Subkegiatan::where('id_kegiatan', $kegiatan->id)
+                ->where(DB::raw('LOWER(nama_sub_kegiatan)'), Str::lower($namaSub))
+                ->first();
+
+            if (!$subkegiatan) {
+                $warnings[] = "Baris $rowNum: Sub Kegiatan '$namaSub' tidak ditemukan di dalam kegiatan '$namaKegiatan'.";
+                continue;
+            }
+
+            $mitra = Mitra::where('sobat_id', $sobatId)->first();
             if (!$mitra) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra ID '$sobatId' ($namaLengkap) tidak ditemukan.";
+                $warnings[] = "Baris $rowNum: Mitra dengan ID '$sobatId' tidak ditemukan.";
                 continue;
             }
 
-            // B. Validasi Aktif
-            $isAktif = TahunAktif::where('user_id', $mitra->id)
-                ->where('tahun', $tahunKegiatan)
-                ->where('status', 'aktif')
-                ->exists();
+            // --- PERBAIKAN: Ambil Limit Honor Sesuai Tahun Kegiatan ---
+            $tahunKegiatan = date('Y', strtotime($subkegiatan->tanggal_mulai));
+            $aturan = AturanPeriode::where('periode', $tahunKegiatan)->first();
+            $batasHonor = $aturan ? (float)$aturan->batas_honor : 0; 
+            // ----------------------------------------------------------
 
-            if (!$isAktif) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra '$namaLengkap' TIDAK AKTIF di tahun $tahunKegiatan.";
-                continue;
+            $kodeJabatan = null;
+            $namaJabatanResmi = null;
+            
+            $jabatanMatch = $allJabatan->first(fn($j) => Str::lower($j->nama_jabatan) === Str::lower($namaJabatan));
+            
+            if (!$jabatanMatch) {
+                $jabatanMatch = $allJabatan->first(fn($j) => str_contains(Str::lower($namaJabatan), Str::lower($j->nama_jabatan)));
             }
 
-            // C. Validasi Jabatan
-            $matchedJabatan = null;
-            if (isset($allowedJabatan[$posisiText])) {
-                $matchedJabatan = $allowedJabatan[$posisiText];
+            if ($jabatanMatch) {
+                $kodeJabatan = $jabatanMatch->kode_jabatan;
+                $namaJabatanResmi = $jabatanMatch->nama_jabatan;
             } else {
-                foreach ($allowedJabatan as $key => $val) {
-                    if (str_contains($posisiText, $key) || str_contains($key, $posisiText)) {
-                         $matchedJabatan = $val;
-                         break;
-                    }
-                }
-                
-                if (!$matchedJabatan) {
-                    $warnings[] = "Baris " . ($index + 2) . ": Posisi '$row[2]' tidak terdaftar di honorarium.";
-                    continue;
-                }
-            }
-
-            // D. Validasi Duplikasi
-            if (in_array($mitra->id, $existingMitraIds)) {
-                $warnings[] = "Baris " . ($index + 2) . ": Mitra '$namaLengkap' sudah ada di perencanaan ini.";
+                $warnings[] = "Baris $rowNum: Jabatan '$namaJabatan' tidak dikenali.";
                 continue;
             }
+
+            // Hitung Statistik (Sama seperti Penugasan)
+            $honorarium = Honorarium::where('id_subkegiatan', $subkegiatan->id)
+                ->where('kode_jabatan', $kodeJabatan)
+                ->first();
+            
+            $tarif = $honorarium ? $honorarium->tarif : 0;
+            $targetVol = $honorarium ? $honorarium->basis_volume : 0; 
+
+            // Hitung Existing Volume (Dari tabel Perencanaan)
+            $existingVol = DB::table('kelompok_perencanaan as kp')
+                ->join('perencanaan as p', 'kp.id_perencanaan', '=', 'p.id')
+                ->where('p.id_subkegiatan', $subkegiatan->id)
+                ->sum('kp.volume_tugas');
+
+            // Hitung Existing Income (Dari tabel Perencanaan - Bulan Ini)
+            $bulanKegiatan = date('m', strtotime($subkegiatan->tanggal_mulai));
+            $existingIncome = DB::table('kelompok_perencanaan as kp')
+                ->join('perencanaan as p', 'kp.id_perencanaan', '=', 'p.id')
+                ->join('subkegiatan as s', 'p.id_subkegiatan', '=', 's.id')
+                ->leftJoin('honorarium as h', function ($join) {
+                    $join->on('h.id_subkegiatan', '=', 's.id')
+                         ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
+                })
+                ->where('kp.id_mitra', $mitra->id)
+                ->whereYear('s.tanggal_mulai', $tahunKegiatan)
+                ->whereMonth('s.tanggal_mulai', $bulanKegiatan)
+                ->sum(DB::raw('kp.volume_tugas * IFNULL(h.tarif, 0)'));
+
+            $newIncome = $volume * $tarif;
 
             $validData[] = [
-                'id_mitra' => $mitra->id,
-                'sobat_id' => $mitra->sobat_id,
-                'nama_lengkap' => $mitra->nama_lengkap,
-                'kode_jabatan' => $matchedJabatan['kode'],
-                'nama_jabatan' => $matchedJabatan['nama_resmi'],
-                'volume_tugas' => 1,
-                'harga_satuan' => $matchedJabatan['tarif']
+                'id_kegiatan'       => $kegiatan->id,
+                'nama_kegiatan'     => $kegiatan->nama_kegiatan,
+                'id_subkegiatan'    => $subkegiatan->id,
+                'nama_sub_kegiatan' => $subkegiatan->nama_sub_kegiatan,
+                'id_mitra'          => $mitra->id,
+                'nama_mitra'        => $mitra->nama_lengkap,
+                'sobat_id'          => $mitra->sobat_id,
+                'kode_jabatan'      => $kodeJabatan,
+                'nama_jabatan'      => $namaJabatanResmi,
+                'volume'            => $volume,
+                'stats' => [
+                    'target_vol'      => $targetVol,
+                    'existing_vol'    => $existingVol, 
+                    'limit_honor'     => $batasHonor, // Limit Dinamis
+                    'existing_income' => $existingIncome,
+                    'new_income'      => $newIncome
+                ]
             ];
         }
 
         return response()->json([
-            'status' => 'success',
-            'subkegiatan' => $subkegiatan,
             'valid_data' => $validData,
-            'warnings' => $warnings,
-            'total_processed' => count($rows),
-            'total_valid' => count($validData)
+            'warnings'   => $warnings
         ]);
+    }
+
+    public function storeImport(Request $request)
+    {
+        $request->validate([
+            'data' => 'required|array',
+            'data.*.id_subkegiatan' => 'required',
+            'data.*.id_mitra' => 'required'
+        ]);
+
+        DB::beginTransaction();
+        try {
+            $count = 0;
+            $grouped = collect($request->data)->groupBy('id_subkegiatan');
+
+            foreach ($grouped as $subId => $items) {
+                // Gunakan ID user login atau fallback ID 1
+                $userId = $request->user() ? $request->user()->id : 1; 
+                
+                // Pastikan user ada di DB
+                if (!DB::table('user')->where('id', $userId)->exists()) {
+                    $firstUser = DB::table('user')->first();
+                    $userId = $firstUser ? $firstUser->id : $userId; 
+                }
+
+                $perencanaan = Perencanaan::firstOrCreate(
+                    ['id_subkegiatan' => $subId],
+                    ['id_pengawas' => $userId] 
+                );
+
+                foreach ($items as $item) {
+                    KelompokPerencanaan::updateOrCreate(
+                        [
+                            'id_perencanaan' => $perencanaan->id,
+                            'id_mitra'       => $item['id_mitra']
+                        ],
+                        [
+                            'kode_jabatan' => $item['kode_jabatan'],
+                            'volume_tugas' => $item['volume']
+                        ]
+                    );
+                    $count++;
+                }
+            }
+
+            DB::commit();
+            return response()->json(['status' => 'success', 'message' => "$count mitra berhasil diimport ke perencanaan."]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Gagal menyimpan: ' . $e->getMessage()], 500);
+        }
     }
 
     public function show($id)

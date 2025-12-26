@@ -2,9 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { FaMoneyBillWave, FaFilter, FaSearch, FaUserTie, FaIdBadge, FaCalendarAlt } from 'react-icons/fa';
+import { 
+  FaMoneyBillWave, 
+  FaFilter, 
+  FaSearch, 
+  FaUserTie, 
+  FaIdBadge, 
+  FaCalendarAlt,
+  FaChevronLeft,
+  FaChevronRight 
+} from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const TransaksiMitra = () => {
   const navigate = useNavigate();
@@ -18,6 +27,10 @@ const TransaksiMitra = () => {
   // --- STATE DATA ---
   const [transaksiData, setTransaksiData] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // --- STATE PAGINATION ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   // --- FETCH TRANSAKSI ---
   useEffect(() => {
@@ -50,6 +63,23 @@ const TransaksiMitra = () => {
     item.nama_lengkap.toLowerCase().includes(search.toLowerCase()) ||
     (item.sobat_id && item.sobat_id.toLowerCase().includes(search.toLowerCase()))
   );
+
+  // Reset ke halaman 1 jika filter atau search berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterTahun, filterBulan, search]);
+
+  // --- LOGIKA PAGINATION ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = displayData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(displayData.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
 
   const formatRupiah = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
@@ -153,7 +183,7 @@ const TransaksiMitra = () => {
                     ) : displayData.length === 0 ? (
                         <tr><td colSpan="4" className="text-center py-10 text-gray-400 italic">Tidak ada data transaksi yang sesuai filter.</td></tr>
                     ) : (
-                        displayData.map(item => (
+                        currentData.map(item => (
                             <tr 
                                 key={item.id} 
                                 onClick={() => navigate(`/admin/mitra/${item.id}`)}
@@ -176,12 +206,11 @@ const TransaksiMitra = () => {
                                     )}
                                 </td>
                                 <td className="px-6 py-4 text-center">
-                                    {/* Progress Bar membandingkan pendapatan terfilter vs LIMIT periode (Bulan atau Tahun*12) */}
+                                    {/* Progress Bar membandingkan pendapatan terfilter vs LIMIT periode */}
                                     {currentLimit > 0 ? (
                                         <div className="w-full max-w-[120px] mx-auto">
                                             <div className="flex justify-between text-[10px] text-gray-400 mb-1">
                                                 <span className="font-bold text-gray-600">{((item.pendapatan_terfilter / currentLimit) * 100).toFixed(1)}%</span>
-                                                {/* Optional: Menampilkan nilai limit untuk info tambahan */}
                                                 <span className="text-[9px]">Max: {formatRupiah(currentLimit)}</span>
                                             </div>
                                             <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
@@ -205,6 +234,37 @@ const TransaksiMitra = () => {
                 </tbody>
             </table>
          </div>
+
+         {/* --- PAGINATION FOOTER --- */}
+         {displayData.length > itemsPerPage && (
+             <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50">
+                <div className="text-xs text-gray-500">
+                   Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, displayData.length)} dari <strong>{displayData.length}</strong> mitra
+                </div>
+                
+                <div className="flex items-center gap-2">
+                   <button
+                       onClick={() => handlePageChange(currentPage - 1)}
+                       disabled={currentPage === 1}
+                       className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                   >
+                       <FaChevronLeft size={12} />
+                   </button>
+                   
+                   <span className="text-xs font-bold text-gray-700 px-2">
+                       Hal {currentPage} / {totalPages}
+                   </span>
+                   
+                   <button
+                       onClick={() => handlePageChange(currentPage + 1)}
+                       disabled={currentPage === totalPages}
+                       className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                   >
+                       <FaChevronRight size={12} />
+                   </button>
+                </div>
+             </div>
+         )}
       </div>
     </div>
   );

@@ -1,6 +1,6 @@
-// src/pages/Penugasan.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useDropzone } from 'react-dropzone'; // Import Dropzone
 import axios from 'axios';
 import Swal from 'sweetalert2'; 
 import * as XLSX from 'xlsx'; 
@@ -16,50 +16,58 @@ import {
   FaTrash,
   FaSearch, 
   FaFilter,
-  FaCheckCircle,
-  FaUndoAlt,
   FaTimes,
   FaLayerGroup,
   FaCalendarAlt,
   FaBriefcase,
-  FaFileExport
+  FaFileExport,
+  FaCheck,
+  FaArrowLeft,
+  FaExclamationTriangle,
+  FaExclamationCircle,
+  FaChartPie
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 const getToken = () => localStorage.getItem('token');
 
 const Penugasan = () => {
   const navigate = useNavigate();
 
+  // --- STATE DATA ---
   const [allPenugasan, setAllPenugasan] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- STATE INCOME & LIMIT ---
+  const [incomeStats, setIncomeStats] = useState({}); 
+  const [limitMap, setLimitMap] = useState({});       
+
+  // --- STATE FILTER & SEARCH ---
   const [searchTerm, setSearchTerm] = useState('');
   const [filterYear, setFilterYear] = useState('');
 
+  // --- STATE UI ---
   const [expandedTaskId, setExpandedTaskId] = useState(null); 
   const [membersCache, setMembersCache] = useState({});
   const [loadingMembers, setLoadingMembers] = useState(false);
-
-  const [processingGroup, setProcessingGroup] = useState(null);
   
+  // --- STATE MODAL IMPORT BARU ---
   const [showImportModal, setShowImportModal] = useState(false);
-  const [importKegiatanList, setImportKegiatanList] = useState([]);
-  const [importSubList, setImportSubList] = useState([]);
-  
-  const [selectedKegiatanId, setSelectedKegiatanId] = useState('');
-  const [selectedSubId, setSelectedSubId] = useState('');
-  const [importFile, setImportFile] = useState(null);
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [importStep, setImportStep] = useState('upload'); // 'upload' | 'preview'
+  const [previewData, setPreviewData] = useState([]);
+  const [importWarnings, setImportWarnings] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // --- HELPERS ---
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('id-ID', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
+      day: 'numeric', month: 'short', year: 'numeric' 
     });
+  };
+
+  const formatRupiah = (num) => {
+    return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
   };
 
   // --- API CALLS ---
@@ -69,15 +77,49 @@ const Penugasan = () => {
         const token = getToken();
         const config = { headers: { Authorization: `Bearer ${token}` } };
         
-        const [resPenugasan, resKelompok] = await Promise.all([
+        const [resPenugasan, resKelompok, resHonor, resAturan] = await Promise.all([
             axios.get(`${API_URL}/api/penugasan`, config),
-            axios.get(`${API_URL}/api/kelompok-penugasan`, config)
+            axios.get(`${API_URL}/api/kelompok-penugasan`, config),
+            axios.get(`${API_URL}/api/honorarium`, config),
+            axios.get(`${API_URL}/api/aturan-periode`, config)
         ]);
         
         setAllPenugasan(resPenugasan.data.data); 
 
-        const membersMap = {};
+        // Mapping Honor
+        const honorMap = {};
+        if(resHonor.data.data) {
+            resHonor.data.data.forEach(h => {
+                honorMap[`${h.id_subkegiatan}-${h.kode_jabatan}`] = Number(h.tarif);
+            });
+        }
+
+        // Mapping Tanggal & Limit
+        const planMap = {};
+        resPenugasan.data.data.forEach(p => {
+            if (p.tanggal_mulai) {
+                const d = new Date(p.tanggal_mulai);
+                planMap[p.id_penugasan] = {
+                    year: d.getFullYear(),
+                    month: d.getMonth(),
+                    subId: p.id_subkegiatan
+                };
+            }
+        });
+
+        const limits = {};
+        if (resAturan.data.data) {
+            resAturan.data.data.forEach(a => {
+                const y = a.tahun || a.periode; 
+                limits[y] = Number(a.batas_honor);
+            });
+        }
+        setLimitMap(limits);
+
+        // Calculate Income Stats
+        const stats = {};
         const rawKelompok = resKelompok.data.data || resKelompok.data;
+        const membersMap = {};
 
         if (Array.isArray(rawKelompok)) {
             rawKelompok.forEach(member => {
@@ -86,13 +128,23 @@ const Penugasan = () => {
                     nama_lengkap: member.nama_lengkap || member.nama_mitra, 
                 };
                 const pId = member.id_penugasan;
-                if (!membersMap[pId]) {
-                    membersMap[pId] = [];
-                }
+                if (!membersMap[pId]) membersMap[pId] = [];
                 membersMap[pId].push(cleanMember);
+
+                // Hitung Income
+                const planInfo = planMap[pId];
+                if (planInfo) {
+                    const key = `${member.id_mitra}-${planInfo.year}-${planInfo.month}`;
+                    const tariff = honorMap[`${planInfo.subId}-${member.kode_jabatan}`] || 0;
+                    const total = tariff * Number(member.volume_tugas || 0);
+                    
+                    stats[key] = (stats[key] || 0) + total;
+                }
             });
         }
+        
         setMembersCache(membersMap);
+        setIncomeStats(stats);
 
     } catch (err) {
         console.error("Gagal load data:", err);
@@ -105,106 +157,104 @@ const Penugasan = () => {
     fetchPenugasan();
   }, []);
 
+  // --- LOGIKA IMPORT BARU ---
   useEffect(() => {
-    if (showImportModal) {
-        axios.get(`${API_URL}/api/kegiatan`, { headers: { Authorization: `Bearer ${getToken()}` } })
-            .then(res => setImportKegiatanList(res.data.data || res.data))
-            .catch(err => console.error(err));
+    if (!showImportModal) {
+        setImportStep('upload');
+        setPreviewData([]);
+        setImportWarnings([]);
+        setIsProcessing(false);
     }
   }, [showImportModal]);
 
-  // --- HANDLERS ---
-  const handleKegiatanChange = async (e) => {
-    const kId = e.target.value;
-    setSelectedKegiatanId(kId);
-    setSelectedSubId('');
-    setImportSubList([]);
-    
-    if (kId) {
-        try {
-            const res = await axios.get(`${API_URL}/api/subkegiatan/kegiatan/${kId}`, { 
-                headers: { Authorization: `Bearer ${getToken()}` } 
-            });
-            setImportSubList(res.data.data || res.data);
-        } catch (err) {
-            console.error(err);
-        }
-    }
-  };
-
-  const handleProcessImport = async () => {
-    if (!selectedSubId || !importFile) {
-        Swal.fire('Error', 'Pilih kegiatan dan file terlebih dahulu!', 'error');
-        return;
-    }
+  const onDrop = async (acceptedFiles) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
 
     const formData = new FormData();
-    formData.append('file', importFile);
-    formData.append('id_subkegiatan', selectedSubId);
+    formData.append('file', file);
 
-    setIsPreviewing(true);
+    setIsProcessing(true);
     try {
         const token = getToken();
+        // AUTO DETECT via Backend
         const res = await axios.post(`${API_URL}/api/penugasan/preview-import`, formData, {
             headers: { 
-                'Content-Type': 'multipart/form-data',
-                Authorization: `Bearer ${token}` 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'multipart/form-data'
             }
         });
 
-        const { valid_data, warnings, subkegiatan } = res.data;
+        const { valid_data, warnings } = res.data;
+        setPreviewData(valid_data || []);
+        setImportWarnings(warnings || []);
 
-        setShowImportModal(false);
-
-        if (warnings.length > 0) {
-            await Swal.fire({
-                title: 'Peringatan Validasi Import',
-                html: `
-                    <div style="text-align:left; max-height: 200px; overflow-y:auto; font-size:12px;">
-                        <p class="font-bold mb-2 text-red-600">${warnings.length} Baris Data Ditolak:</p>
-                        <ul class="list-disc pl-4 text-gray-700">
-                            ${warnings.map(w => `<li>${w}</li>`).join('')}
-                        </ul>
-                        <p class="mt-4 font-bold text-green-600">
-                            ${valid_data.length} data valid siap diproses. Lanjutkan?
-                        </p>
-                    </div>
-                `,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Ya, Lanjutkan',
-                cancelButtonText: 'Batal',
-                width: '600px'
-            }).then((result) => {
-                if (result.isConfirmed && valid_data.length > 0) {
-                    goToTambahPenugasan(subkegiatan, valid_data);
-                }
-            });
+        if (valid_data && valid_data.length > 0) {
+            setImportStep('preview');
         } else {
-            if (valid_data.length > 0) {
-                goToTambahPenugasan(subkegiatan, valid_data);
-            } else {
-                Swal.fire('Info', 'Tidak ada data valid yang ditemukan dalam file.', 'info');
-            }
+            Swal.fire('Gagal', 'Tidak ada data valid yang ditemukan dalam file.', 'error');
         }
 
     } catch (err) {
         console.error(err);
-        Swal.fire('Gagal', err.response?.data?.message || 'Terjadi kesalahan saat memproses file.', 'error');
+        Swal.fire('Gagal', err.response?.data?.message || 'Gagal memproses file.', 'error');
     } finally {
-        setIsPreviewing(false);
+        setIsProcessing(false);
     }
   };
 
-  const goToTambahPenugasan = (subkegiatanData, importedMembers) => {
-    navigate('/penugasan/tambah', { 
-        state: {
-            preSelectedSubKegiatan: subkegiatanData,
-            importedMembers: importedMembers
-        }
-    });
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop, 
+    accept: {
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+        'application/vnd.ms-excel': ['.xls'],
+        'text/csv': ['.csv']
+    },
+    multiple: false
+  });
+
+  const handleFinalImport = async () => {
+    setIsProcessing(true);
+    try {
+        const token = getToken();
+        await axios.post(`${API_URL}/api/penugasan/store-import`, {
+            data: previewData
+        }, { headers: { Authorization: `Bearer ${token}` } });
+
+        Swal.fire('Sukses', `${previewData.length} penugasan berhasil disimpan!`, 'success');
+        setShowImportModal(false);
+        fetchPenugasan();
+    } catch (err) {
+        Swal.fire('Gagal', err.response?.data?.message || 'Gagal menyimpan data.', 'error');
+    } finally {
+        setIsProcessing(false);
+    }
   };
 
+  const handleDownloadTemplate = () => {
+    const rows = [
+      { 
+          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
+          "sobat_id": "3373xxx", 
+          "jabatan": "Petugas Pendataan Lapangan (PPL Survei)",
+          "volume": 1
+        },
+        { 
+          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
+          "sobat_id": "3373xxx", 
+          "jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
+          "volume": 1
+        }
+    ];
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+    XLSX.writeFile(workbook, "template_import_penugasan.xlsx");
+  };
+
+  // --- FILTER & SORT ---
   const availableYears = useMemo(() => {
     const years = new Set();
     allPenugasan.forEach(item => {
@@ -245,6 +295,7 @@ const Penugasan = () => {
 
   }, [allPenugasan, searchTerm, filterYear]);
 
+  // --- ACTIONS ---
   const toggleRow = async (id_penugasan) => {
     if (expandedTaskId === id_penugasan) {
       setExpandedTaskId(null);
@@ -265,71 +316,6 @@ const Penugasan = () => {
       } finally {
         setLoadingMembers(false);
       }
-    }
-  };
-
-  const handleStatusChange = async (e, id, currentStatus) => {
-    e.stopPropagation();
-    const newStatus = currentStatus === 'disetujui' ? 'menunggu' : 'disetujui';
-
-    try {
-      setAllPenugasan(prev => prev.map(p => 
-        p.id_penugasan === id ? { ...p, status_penugasan: newStatus } : p
-      ));
-
-      const token = getToken();
-      await axios.put(`${API_URL}/api/penugasan/${id}`, 
-        { status_penugasan: newStatus }, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-    } catch (err) {
-      console.error(err);
-      Swal.fire('Gagal', `Gagal mengubah status.`, 'error');
-      fetchPenugasan();
-    }
-  };
-
-  const handleGroupStatusChange = async (subItems, groupName) => {
-    const allApproved = subItems.every(item => item.status_penugasan === 'disetujui');
-    const targetStatus = allApproved ? 'menunggu' : 'disetujui';
-    const actionText = targetStatus === 'disetujui' ? 'Menyetujui Semua' : 'Membatalkan Semua';
-
-    const result = await Swal.fire({
-        title: `${actionText}?`,
-        text: `Akan mengubah status ${subItems.length} penugasan dalam grup ini menjadi '${targetStatus}'.`,
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonColor: targetStatus === 'disetujui' ? '#10B981' : '#F59E0B',
-        confirmButtonText: `Ya, ${actionText}`
-    });
-
-    if (result.isConfirmed) {
-        setProcessingGroup(groupName); 
-        try {
-            const token = getToken();
-            const config = { headers: { Authorization: `Bearer ${token}` } };
-            
-            const promises = subItems.map(item => {
-                if (item.status_penugasan !== targetStatus) {
-                    return axios.put(`${API_URL}/api/penugasan/${item.id_penugasan}`, {
-                        status_penugasan: targetStatus
-                    }, config);
-                }
-                return Promise.resolve();
-            });
-
-            await Promise.all(promises);
-
-            Swal.fire('Sukses', 'Status grup berhasil diperbarui!', 'success');
-            fetchPenugasan();
-
-        } catch (err) {
-            console.error(err);
-            Swal.fire('Error', 'Terjadi kesalahan saat memproses grup.', 'error');
-        } finally {
-            setProcessingGroup(null); 
-        }
     }
   };
 
@@ -364,18 +350,11 @@ const Penugasan = () => {
     navigate(`/penugasan/edit/${id}`);
   };
 
-  const handleDownloadTemplate = () => {
-    const rows = [
-      { sobat_id: "337322040034", nama_lengkap: "Contoh Nama Mitra", posisi: "Petugas Pendataan Lapangan (PPL Survei)" },
-      { sobat_id: "337322040036", nama_lengkap: "Contoh Mitra Dua", posisi: "Petugas Pemeriksa Lapangan (PML)" }
-    ];
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-    XLSX.writeFile(workbook, "template_import_penugasan.xlsx");
-  };
+  // --- CEK BLOCKER UNTUK BUTTON IMPORT ---
+  const isBlocker = useMemo(() => {
+    return previewData.some(row => row.stats.is_over_limit || row.stats.is_over_volume);
+  }, [previewData]);
 
-  // --- LOADING STATE ---
   if (isLoading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-blue-100 border-t-[#1A2A80] rounded-full animate-spin mb-4"></div>
@@ -384,11 +363,9 @@ const Penugasan = () => {
   );
 
   return (
-    // Container disesuaikan dengan Layout (max-w-7xl) agar serasi dengan Header & Footer
     <div className="w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       
       {/* === HEADER SECTION === */}
-      {/* Menggunakan Card Putih agar konsisten dengan ManajemenKegiatan */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
             <div>
@@ -403,7 +380,6 @@ const Penugasan = () => {
                </p>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap gap-3">
                <button 
                  onClick={handleDownloadTemplate} 
@@ -470,10 +446,6 @@ const Penugasan = () => {
           </div>
         ) : (
           Object.entries(groupedPenugasan).map(([kegiatanName, subItems]) => {
-            const allApproved = subItems.length > 0 && subItems.every(i => i.status_penugasan === 'disetujui');
-            const isThisGroupProcessing = processingGroup === kegiatanName;
-
-            // Card untuk setiap Grup Kegiatan Induk
             return (
               <div key={kegiatanName} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow duration-300">
                 
@@ -490,40 +462,27 @@ const Penugasan = () => {
                           </span>
                       </div>
                    </div>
-
-                   <button 
-                      onClick={() => handleGroupStatusChange(subItems, kegiatanName)}
-                      disabled={isThisGroupProcessing || processingGroup !== null}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm border
-                        ${allApproved 
-                          ? 'bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-100' 
-                          : 'bg-green-50 text-green-600 border-green-200 hover:bg-green-100'}
-                        disabled:opacity-50 disabled:cursor-not-allowed
-                      `}
-                   >
-                      {isThisGroupProcessing ? 'Memproses...' : (
-                        allApproved ? <><FaUndoAlt /> Batalkan Semua</> : <><FaCheckCircle /> Setujui Semua</>
-                      )}
-                   </button>
                 </div>
 
-                {/* --- List Items (Accordion Style) --- */}
+                {/* --- List Items --- */}
                 <div className="divide-y divide-gray-50">
                   {subItems.map((task) => {
                     const isOpen = expandedTaskId === task.id_penugasan;
                     const members = membersCache[task.id_penugasan] || [];
                     const membersCount = members.length;
-                    const isApproved = task.status_penugasan === 'disetujui';
+                    
+                    // Stats for Display
+                    const realisasi = task.total_alokasi || 0; // Butuh update controller utk kirim ini ke user view, jika null anggap 0
+                    // Catatan: Jika controller belum kirim 'total_alokasi' ke view User, ini mungkin 0.
+                    // Namun fokus kita sekarang adalah fitur Import.
 
                     return (
                       <div key={task.id_penugasan} className={`group/item transition-colors ${isOpen ? 'bg-blue-50/10' : 'bg-white hover:bg-gray-50'}`}>
                         
-                        {/* --- Clickable Row --- */}
                         <div 
                           onClick={() => toggleRow(task.id_penugasan)} 
                           className="px-6 py-5 cursor-pointer flex flex-col md:flex-row md:items-center md:justify-between gap-4"
                         >
-                          {/* Kiri: Info Utama */}
                           <div className="flex-1 flex items-start gap-4">
                             <div className={`mt-1 p-1.5 rounded-full transition-transform duration-300 border bg-white ${isOpen ? 'rotate-180 text-[#1A2A80] border-blue-200 shadow-sm' : 'text-gray-400 border-gray-200'}`}>
                                 <FaChevronDown size={10} />
@@ -534,12 +493,8 @@ const Penugasan = () => {
                                     <h3 className={`font-bold text-sm transition-colors ${isOpen ? 'text-[#1A2A80]' : 'text-gray-800'}`}>
                                         {task.nama_sub_kegiatan}
                                     </h3>
-                                    <span className={`text-[10px] px-2 py-0.5 rounded font-bold border uppercase tracking-wider
-                                        ${isApproved 
-                                        ? 'bg-green-50 text-green-700 border-green-100' 
-                                        : 'bg-gray-100 text-gray-500 border-gray-200'}
-                                    `}>
-                                        {task.status_penugasan || 'Menunggu'}
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border uppercase ${task.status_penugasan === 'disetujui' ? 'bg-green-50 text-green-600 border-green-100' : 'bg-gray-100 text-gray-500 border-gray-200'}`}>
+                                        {task.status_penugasan}
                                     </span>
                                 </div>
                                 
@@ -563,16 +518,6 @@ const Penugasan = () => {
                           {/* Kanan: Actions */}
                           <div className="flex items-center gap-2 md:border-l md:pl-6 border-gray-100 self-end md:self-center">
                                 <button 
-                                    onClick={(e) => handleStatusChange(e, task.id_penugasan, task.status_penugasan)}
-                                    className={`p-2 rounded-lg transition-all shadow-sm border ${isApproved 
-                                        ? 'bg-white text-amber-500 border-gray-200 hover:bg-amber-50' 
-                                        : 'bg-white text-green-600 border-gray-200 hover:bg-green-50'}`}
-                                    title={isApproved ? "Batalkan Persetujuan" : "Setujui Penugasan"}
-                                >
-                                    {isApproved ? <FaUndoAlt size={14} /> : <FaCheckCircle size={14} />}
-                                </button>
-
-                                <button 
                                     onClick={(e) => handleEdit(e, task.id_penugasan)} 
                                     className="p-2 bg-white text-indigo-500 border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 rounded-lg transition-all shadow-sm" 
                                     title="Edit Penugasan"
@@ -590,7 +535,6 @@ const Penugasan = () => {
                           </div>
                         </div>
                         
-                        {/* --- Expanded Details (Members) --- */}
                         {isOpen && (
                           <div className="bg-gray-50/50 border-t border-gray-100 px-6 py-6 pl-6 sm:pl-16 transition-all duration-300 ease-in-out">
                              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-5">
@@ -618,30 +562,75 @@ const Penugasan = () => {
                                  </div>
                                ) : (
                                  <ul className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                                   {members.map((m, idx) => (
-                                     <li key={m.id_mitra || idx} className="flex items-center gap-3 bg-white px-3 py-3 rounded-xl border border-gray-200 shadow-sm hover:shadow hover:border-blue-200 transition-all">
-                                       <div className="flex-shrink-0 w-8 h-8 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[#1A2A80] text-xs font-extrabold">
-                                          {m.nama_lengkap ? m.nama_lengkap.charAt(0) : '?'}
-                                       </div>
-                                       <div className="overflow-hidden w-full min-w-0">
-                                          <div className="flex justify-between items-center gap-2">
-                                              <p className="text-gray-800 font-bold text-xs truncate" title={m.nama_lengkap}>
-                                                  {m.nama_lengkap || m.nama_mitra || 'Nama Tidak Tersedia'}
-                                              </p>
-                                          </div>
-                                          <div className="flex justify-between items-center mt-0.5">
-                                             <p className="text-[10px] text-gray-500 truncate max-w-[70%]">
-                                                 {m.nama_jabatan || '-'}
-                                             </p>
-                                             {m.volume_tugas > 0 && (
-                                                <span className="text-[9px] font-bold bg-gray-50 text-gray-600 px-1.5 py-0.5 rounded border border-gray-100">
-                                                    Vol: {m.volume_tugas}
+                                   {members.map((m, idx) => {
+                                        // LOGIC HITUNG INCOME & STATUS BATAS (Sama seperti Admin)
+                                        const taskDate = new Date(task.tanggal_mulai);
+                                        const taskYear = taskDate.getFullYear();
+                                        const taskMonth = taskDate.getMonth();
+                                        const monthlyLimit = limitMap[taskYear] || 0;
+
+                                        const incomeKey = `${m.id_mitra}-${taskYear}-${taskMonth}`;
+                                        const totalMonthlyIncome = incomeStats[incomeKey] || 0;
+                                        const percentageIncome = monthlyLimit > 0 ? (totalMonthlyIncome / monthlyLimit) * 100 : 0;
+                                        const isOverIncome = monthlyLimit > 0 && totalMonthlyIncome > monthlyLimit;
+
+                                     return (
+                                       <li key={m.id_mitra || idx} className="bg-white px-4 py-4 rounded-xl border border-gray-200 shadow-sm hover:shadow hover:border-blue-200 transition-all">
+                                         <div className="flex items-center gap-3 mb-3">
+                                            <div className="w-9 h-9 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-[#1A2A80] text-xs font-extrabold shadow-inner">
+                                                {m.nama_lengkap ? m.nama_lengkap.charAt(0) : '?'}
+                                            </div>
+                                            <div className="overflow-hidden w-full">
+                                                <div className="flex justify-between items-center w-full">
+                                                    <p className="text-gray-800 font-bold text-xs truncate" title={m.nama_lengkap}>
+                                                        {m.nama_lengkap || m.nama_mitra || 'Nama Tidak Tersedia'}
+                                                    </p>
+                                                    {m.volume_tugas > 0 && (
+                                                        <span className="text-[10px] font-bold bg-blue-50 text-[#1A2A80] px-1.5 py-0.5 rounded border border-blue-100">
+                                                            Vol: {m.volume_tugas}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-[11px] text-gray-400 truncate mt-0.5">{m.nama_jabatan || '-'}</p>
+                                            </div>
+                                         </div>
+
+                                         {/* PROGRESS BAR PENDAPATAN MITRA */}
+                                         <div className="mt-3 border-t border-gray-100 pt-3">
+                                            <div className="flex justify-between items-end text-[10px] mb-1.5">
+                                                <span className="text-gray-500 font-medium">Pendapatan (Bulan Ini)</span>
+                                                <span className={`font-bold ${isOverIncome ? 'text-red-600' : 'text-gray-700'}`}>
+                                                    {formatRupiah(totalMonthlyIncome)}
                                                 </span>
-                                             )}
-                                          </div>
-                                       </div>
-                                     </li>
-                                   ))}
+                                            </div>
+                                            
+                                            {monthlyLimit > 0 ? (
+                                                <div className="relative w-full h-1.5 bg-gray-100 rounded-full overflow-hidden border border-gray-100">
+                                                    <div 
+                                                        className={`absolute top-0 left-0 h-full rounded-full transition-all duration-500 ${isOverIncome ? 'bg-red-500' : 'bg-emerald-500'}`}
+                                                        style={{ width: `${Math.min(percentageIncome, 100)}%` }}
+                                                    ></div>
+                                                </div>
+                                            ) : (
+                                                <div className="text-[10px] text-gray-300 italic bg-gray-50 px-2 py-1 rounded text-center">Batas honor belum diset</div>
+                                            )}
+
+                                            {monthlyLimit > 0 && (
+                                                <div className="flex justify-between text-[9px] text-gray-400 mt-1">
+                                                    <span>0</span>
+                                                    <span className="font-medium">Max: {formatRupiah(monthlyLimit)}</span>
+                                                </div>
+                                            )}
+
+                                            {isOverIncome && (
+                                                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-red-600 bg-red-50 px-2 py-1 rounded border border-red-100 font-bold">
+                                                    <FaExclamationCircle /> Melebihi Batas Honor!
+                                                </div>
+                                            )}
+                                        </div>
+                                       </li>
+                                     );
+                                   })}
                                  </ul>
                                )
                              )}
@@ -657,90 +646,184 @@ const Penugasan = () => {
         )}
       </div>
 
-      {/* === IMPORT MODAL (Sama seperti sebelumnya, style disesuaikan sedikit) === */}
+      {/* === MODAL IMPORT BARU (SAMA SEPERTI ADMIN) === */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up">
-                <div className="bg-[#1A2A80] px-6 py-4 flex justify-between items-center">
-                    <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                        <FaFileUpload className="text-blue-200" /> Import Data
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-down">
+                
+                {/* HEADER MODAL */}
+                <div className="bg-[#1A2A80] p-4 flex justify-between items-center text-white shrink-0">
+                    <h3 className="font-bold text-lg">
+                        {importStep === 'upload' ? 'Upload File Penugasan' : 'Preview Data Import'}
                     </h3>
-                    <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white transition-colors">
-                        <FaTimes size={18} />
-                    </button>
+                    <button onClick={() => setShowImportModal(false)} className="hover:text-red-300"><FaTimes /></button>
                 </div>
 
-                <div className="p-6 space-y-5">
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pilih Survei/Sensus (Induk)</label>
-                        <select 
-                            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1A2A80] focus:border-transparent outline-none transition"
-                            value={selectedKegiatanId}
-                            onChange={handleKegiatanChange}
+                <div className="p-6 overflow-y-auto flex-1">
+                    
+                    {/* STEP 1: DRAG & DROP */}
+                    {importStep === 'upload' && (
+                        <div 
+                            {...getRootProps()} 
+                            className={`border-3 border-dashed rounded-xl h-64 flex flex-col items-center justify-center cursor-pointer transition-all
+                                ${isDragActive ? 'border-green-500 bg-green-50 scale-95' : 'border-gray-300 hover:border-[#1A2A80] hover:bg-blue-50'}
+                            `}
                         >
-                            <option value="">-- Pilih Kegiatan Induk --</option>
-                            {importKegiatanList.map(k => (
-                                <option key={k.id} value={k.id}>{k.nama_kegiatan}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pilih Kegiatan (Sub)</label>
-                        <select 
-                            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1A2A80] focus:border-transparent outline-none transition disabled:bg-gray-100 disabled:text-gray-400"
-                            value={selectedSubId}
-                            onChange={(e) => setSelectedSubId(e.target.value)}
-                            disabled={!selectedKegiatanId}
-                        >
-                            <option value="">-- Pilih Sub Kegiatan --</option>
-                            {importSubList.map(sub => (
-                                <option key={sub.id} value={sub.id}>{sub.nama_sub_kegiatan}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-blue-50 hover:border-blue-300 transition-colors relative group">
-                        <input 
-                            type="file" 
-                            accept=".csv, .xlsx, .xls"
-                            onChange={(e) => setImportFile(e.target.files[0])}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        />
-                        <div className="space-y-3 pointer-events-none">
-                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto group-hover:bg-blue-100 transition-colors">
-                                <FaFileUpload className="text-gray-400 text-xl group-hover:text-[#1A2A80]" />
-                            </div>
-                            {importFile ? (
-                                <div>
-                                    <p className="text-sm font-bold text-[#1A2A80]">{importFile.name}</p>
-                                    <p className="text-xs text-green-600 mt-1">File siap diunggah</p>
-                                </div>
+                            <input {...getInputProps()} />
+                            <FaFileUpload className={`text-5xl mb-4 ${isDragActive ? 'text-green-500' : 'text-gray-400'}`} />
+                            {isProcessing ? (
+                                <p className="text-gray-600 font-bold animate-pulse">Sedang memproses file...</p>
                             ) : (
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Klik atau tarik file Excel/CSV</p>
-                                    <p className="text-xs text-gray-400 mt-1">Format: .xlsx, .xls, .csv</p>
+                                <div className="text-center">
+                                    <p className="text-lg font-bold text-gray-700">Tarik & Lepas file Excel di sini</p>
+                                    <p className="text-sm text-gray-500 mt-1">atau klik untuk memilih file</p>
+                                    <p className="text-xs text-gray-400 mt-4">Format: .xlsx, .xls, .csv</p>
                                 </div>
                             )}
                         </div>
-                    </div>
+                    )}
+
+                    {/* STEP 2: PREVIEW TABLE */}
+                    {importStep === 'preview' && (
+                        <div className="space-y-4">
+                            {importWarnings.length > 0 && (
+                                <div className="bg-amber-50 border-l-4 border-amber-500 p-4 text-sm text-amber-800 mb-4 max-h-32 overflow-y-auto">
+                                    <div className="font-bold flex items-center gap-2 mb-1">
+                                        <FaExclamationTriangle /> {importWarnings.length} Baris Data Dilewati:
+                                    </div>
+                                    <ul className="list-disc pl-5 space-y-1">
+                                        {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                                    </ul>
+                                </div>
+                            )}
+
+                            {/* ALERT BLOCKER JIKA ADA LIMIT YANG DILANGGAR */}
+                            {isBlocker && (
+                                <div className="bg-red-50 border-l-4 border-red-500 p-4 text-sm text-red-800 mb-4 animate-pulse">
+                                    <div className="font-bold flex items-center gap-2 mb-1">
+                                        <FaExclamationCircle /> IMPORT DITAHAN!
+                                    </div>
+                                    <p>Terdapat data yang melebihi <b>Target Volume</b> atau <b>Batas Honor Mitra</b>. <br/>Silakan perbaiki data di file Excel Anda sebelum melanjutkan.</p>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center">
+                                <span className="font-bold text-gray-700">Preview Data ({previewData.length} Baris)</span>
+                                <button 
+                                    onClick={() => { setImportStep('upload'); setPreviewData([]); }}
+                                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                                >
+                                    <FaArrowLeft /> Upload Ulang
+                                </button>
+                            </div>
+
+                            <div className="border rounded-lg overflow-hidden bg-white">
+                                <div className="overflow-x-auto max-h-[400px]">
+                                    <table className="min-w-full text-xs text-left">
+                                        <thead className="bg-gray-100 font-bold text-gray-700 uppercase sticky top-0 shadow-sm z-10">
+                                            <tr>
+                                                <th className="px-4 py-3 w-1/4">Survei/Sensus</th>
+                                                <th className="px-4 py-3 w-1/5">Kegiatan</th>
+                                                <th className="px-4 py-3 w-1/5">Mitra (Jabatan)</th>
+                                                <th className="px-4 py-3 w-1/5 text-center">Simulasi Volume</th>
+                                                <th className="px-4 py-3 w-1/5 text-center">Simulasi Honor</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {previewData.map((row, idx) => {
+                                                const s = row.stats;
+                                                
+                                                // Kalkulasi Persentase Visual
+                                                const totalVol = s.existing_vol + row.volume;
+                                                const pctExistVol = s.target_vol > 0 ? (s.existing_vol / s.target_vol) * 100 : 0;
+                                                const pctNewVol = s.target_vol > 0 ? (row.volume / s.target_vol) * 100 : 0;
+
+                                                const totalInc = s.existing_income + s.new_income;
+                                                const pctExistInc = s.limit_honor > 0 ? (s.existing_income / s.limit_honor) * 100 : 0;
+                                                const pctNewInc = s.limit_honor > 0 ? (s.new_income / s.limit_honor) * 100 : 0;
+
+                                                return (
+                                                    <tr key={idx} className={`hover:bg-gray-50 ${ (s.is_over_limit || s.is_over_volume) ? 'bg-red-50' : ''}`}>
+                                                        <td className="px-4 py-2 font-bold text-gray-800 truncate max-w-[150px]" title={row.nama_kegiatan}>
+                                                            {row.nama_kegiatan}
+                                                        </td>
+                                                        <td className="px-4 py-2 text-gray-600 truncate max-w-[150px]" title={row.nama_sub_kegiatan}>
+                                                            {row.nama_sub_kegiatan}
+                                                        </td>
+                                                        <td className="px-4 py-2">
+                                                            <div className="font-bold text-gray-700">{row.nama_mitra}</div>
+                                                            <div className="text-[10px] text-gray-500 font-mono">{row.sobat_id}</div>
+                                                            <div className="text-[10px] text-gray-500">{row.nama_jabatan}</div>
+                                                        </td>
+
+                                                        {/* BAR VOLUME */}
+                                                        <td className="px-4 py-2 align-middle">
+                                                            <div className="flex justify-between text-[10px] mb-1">
+                                                                <span>Real: <b>{s.existing_vol}</b> + <span className="text-blue-600 font-bold">{row.volume}</span></span>
+                                                                <span className={s.is_over_volume ? "text-red-600 font-bold" : "text-gray-500"}>Target: {s.target_vol}</span>
+                                                            </div>
+                                                            <div className="w-full h-2 bg-gray-200 rounded-full flex overflow-hidden">
+                                                                <div style={{ width: `${Math.min(pctExistVol, 100)}%` }} className="bg-gray-400 h-full"></div>
+                                                                <div style={{ width: `${Math.min(pctNewVol, 100 - Math.min(pctExistVol, 100))}%` }} className={`h-full ${s.is_over_volume ? 'bg-red-500' : 'bg-blue-500'} relative`}>
+                                                                    <div className="absolute inset-0 bg-white/20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}}></div>
+                                                                </div>
+                                                            </div>
+                                                            {s.is_over_volume && <div className="text-[9px] text-red-500 mt-1 font-bold text-center">Melebihi Target!</div>}
+                                                        </td>
+
+                                                        {/* BAR HONOR */}
+                                                        <td className="px-4 py-2 align-middle">
+                                                            <div className="flex justify-between text-[10px] mb-1">
+                                                                <span>Total: <b>{formatRupiah(totalInc)}</b></span>
+                                                                <span className="text-gray-400">Limit: {s.limit_honor > 0 ? formatRupiah(s.limit_honor) : '-'}</span>
+                                                            </div>
+                                                            {s.limit_honor > 0 ? (
+                                                                <>
+                                                                    <div className="w-full h-2 bg-gray-200 rounded-full flex overflow-hidden">
+                                                                        <div style={{ width: `${Math.min(pctExistInc, 100)}%` }} className="bg-green-600 h-full"></div>
+                                                                        <div style={{ width: `${Math.min(pctNewInc, 100 - Math.min(pctExistInc, 100))}%` }} className={`h-full ${s.is_over_limit ? 'bg-red-500' : 'bg-green-400'} relative`}>
+                                                                            <div className="absolute inset-0 bg-white/20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}}></div>
+                                                                        </div>
+                                                                    </div>
+                                                                    {s.is_over_limit && <div className="text-[9px] text-red-500 mt-1 font-bold text-center">Melebihi Batas!</div>}
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-[10px] text-gray-400 italic text-center">Tanpa Limit</div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="p-5 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+                <div className="p-4 bg-gray-50 border-t flex justify-end gap-3">
                     <button 
                         onClick={() => setShowImportModal(false)} 
-                        className="px-5 py-2.5 rounded-xl text-gray-600 hover:bg-gray-200 text-sm font-bold transition-colors"
+                        className="px-4 py-2 rounded-lg text-gray-600 font-medium hover:bg-gray-200 transition"
                     >
                         Batal
                     </button>
-                    <button 
-                        onClick={handleProcessImport} 
-                        disabled={isPreviewing || !selectedSubId || !importFile}
-                        className="px-5 py-2.5 rounded-xl bg-[#1A2A80] text-white hover:bg-blue-900 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all"
-                    >
-                        {isPreviewing && <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></span>}
-                        {isPreviewing ? 'Memproses...' : 'Proses Import'}
-                    </button>
+                    
+                    {importStep === 'preview' && (
+                        <button 
+                            onClick={handleFinalImport}
+                            // DISABLE JIKA BLOCKER AKTIF
+                            disabled={isProcessing || previewData.length === 0 || isBlocker}
+                            className={`px-6 py-2 rounded-lg font-bold shadow-lg transition flex items-center gap-2
+                                ${isBlocker 
+                                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                                    : 'bg-[#1A2A80] hover:bg-blue-900 text-white'}
+                            `}
+                        >
+                            {isProcessing ? 'Menyimpan...' : <><FaCheck /> Proses Import</>}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

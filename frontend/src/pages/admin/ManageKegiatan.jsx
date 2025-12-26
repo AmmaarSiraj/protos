@@ -1,4 +1,3 @@
-// src/pages/admin/ManageKegiatan.jsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -15,35 +14,54 @@ import {
   FaCalendarAlt,
   FaSearch,
   FaFilter,
-  FaTimes, // Icon Close Modal
-  FaSave   // Icon Save Modal
+  FaTimes, 
+  FaSave 
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ManageKegiatan = () => {
   const [kegiatan, setKegiatan] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // State untuk Expand/Collapse
   const [expandedRow, setExpandedRow] = useState(null); 
   
-  // State untuk Filter & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [filterYear, setFilterYear] = useState('');
+  const [filterStatus, setFilterStatus] = useState(''); 
 
-  // State untuk Import
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
 
-  // --- STATE BARU: MODAL EDIT SUB ---
-  const [editingSub, setEditingSub] = useState(null); // Object sub yang sedang diedit
+  const [editingSub, setEditingSub] = useState(null); 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [savingSub, setSavingSub] = useState(false);
 
-  // 1. FETCH DATA (Kegiatan + Subkegiatan sekaligus)
+  const getComputedStatus = (startDate, endDate) => {
+    if (!startDate || !endDate) return { label: '?', className: 'bg-gray-100' };
+    const now = new Date();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    now.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    if (now < start) return { label: 'Akan Datang', className: 'bg-blue-100 text-blue-700' };
+    if (now > end) return { label: 'Selesai', className: 'bg-green-100 text-green-700' };
+    return { label: 'Sedang Proses', className: 'bg-yellow-100 text-yellow-700' };
+  };
+
+  const formatDateRange = (startDate, endDate) => {
+    if (!startDate || !endDate) return '-';
+    const options = { day: 'numeric', month: 'short', year: 'numeric' };
+    const start = new Date(startDate).toLocaleDateString('id-ID', options);
+    const end = new Date(endDate).toLocaleDateString('id-ID', options);
+    return `${start} - ${end}`;
+  };
+
   const fetchKegiatan = async () => {
     setLoading(true);
     try {
@@ -52,12 +70,9 @@ const ManageKegiatan = () => {
       const config = { headers: { Authorization: `Bearer ${token}` } };
 
       const res = await axios.get(`${API_URL}/api/kegiatan`, config);
-
-      // Ambil data dari wrapper resource Laravel
       const allKegiatan = res.data.data || [];
 
       const mergedData = allKegiatan.map(k => {
-         // Ambil subkegiatan langsung dari properti relasi yang dikirim backend
          const mySubs = k.subkegiatan || [];
          
          const activeYears = new Set();
@@ -94,24 +109,49 @@ const ManageKegiatan = () => {
     fetchKegiatan();
   }, []);
 
-  // --- LOGIKA FILTER & SEARCH ---
   const filteredKegiatan = useMemo(() => {
-    return kegiatan.filter(item => {
-      const term = searchTerm.toLowerCase();
-      const namaKegiatan = item.nama_kegiatan || '';
-      
-      const matchParent = namaKegiatan.toLowerCase().includes(term);
-      const matchChild = item.sub_list && item.sub_list.some(sub => 
-        sub.nama_sub_kegiatan && sub.nama_sub_kegiatan.toLowerCase().includes(term)
-      );
-      const isMatchSearch = matchParent || matchChild;
-      
+    return kegiatan.map(item => {
       const years = item.active_years || [];
       const matchYear = filterYear ? years.includes(filterYear) : true;
+      
+      if (!matchYear) return null;
 
-      return isMatchSearch && matchYear;
-    });
-  }, [kegiatan, searchTerm, filterYear]);
+      const term = searchTerm.toLowerCase();
+      const parentMatchesSearch = item.nama_kegiatan.toLowerCase().includes(term);
+
+      const filteredSubs = (item.sub_list || []).filter(sub => {
+        let matchesStatus = true;
+        if (filterStatus) {
+           const statusObj = getComputedStatus(sub.tanggal_mulai, sub.tanggal_selesai);
+           matchesStatus = statusObj.label === filterStatus;
+        }
+
+        let matchesSearch = true;
+        if (searchTerm) {
+           if (!parentMatchesSearch) {
+              matchesSearch = sub.nama_sub_kegiatan && sub.nama_sub_kegiatan.toLowerCase().includes(term);
+           }
+        }
+
+        return matchesStatus && matchesSearch;
+      });
+
+      if (filterStatus) {
+          if (filteredSubs.length > 0) {
+              return { ...item, sub_list: filteredSubs };
+          }
+          return null;
+      }
+
+      if (filteredSubs.length > 0) {
+          return { ...item, sub_list: filteredSubs };
+      } else if (parentMatchesSearch && !filterStatus) {
+          return item; 
+      }
+      
+      return null; 
+    }).filter(Boolean);
+  }, [kegiatan, searchTerm, filterYear, filterStatus]);
 
   const availableYears = useMemo(() => {
     const years = new Set();
@@ -125,8 +165,6 @@ const ManageKegiatan = () => {
     }
     return [...years].sort((a, b) => b - a);
   }, [kegiatan]);
-
-  // --- HANDLERS KEGIATAN (INDUK) ---
 
   const handleDelete = async (e, id) => {
     e.stopPropagation(); 
@@ -145,7 +183,6 @@ const ManageKegiatan = () => {
         await axios.delete(`${API_URL}/api/kegiatan/${id}`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-        // Update state lokal atau refresh data
         setKegiatan(prev => prev.filter(item => item.id !== id));
         Swal.fire('Terhapus!', 'Data berhasil dihapus.', 'success');
       } catch (err) {
@@ -162,9 +199,6 @@ const ManageKegiatan = () => {
     }
   };
 
-  // --- HANDLERS SUB KEGIATAN (ANAK) ---
-
-  // 1. DELETE SUB KEGIATAN
   const handleDeleteSub = async (e, subId) => {
     e.stopPropagation();
     const result = await Swal.fire({
@@ -183,7 +217,6 @@ const ManageKegiatan = () => {
                 headers: { Authorization: `Bearer ${token}` }
             });
             Swal.fire('Terhapus', 'Kegiatan berhasil dihapus.', 'success');
-            // Refresh seluruh data untuk memperbarui tampilan
             fetchKegiatan();
         } catch (err) {
             Swal.fire('Gagal', 'Terjadi kesalahan sistem.', 'error');
@@ -191,10 +224,8 @@ const ManageKegiatan = () => {
     }
   };
 
-  // 2. BUKA MODAL EDIT
   const handleEditSubClick = (e, sub) => {
     e.stopPropagation();
-    // Format tanggal untuk input type="date"
     setEditingSub({
         ...sub,
         tanggal_mulai: sub.tanggal_mulai ? sub.tanggal_mulai.split('T')[0] : '',
@@ -203,7 +234,6 @@ const ManageKegiatan = () => {
     setIsModalOpen(true);
   };
 
-  // 3. SIMPAN EDIT SUB
   const handleSaveSub = async (e) => {
     e.preventDefault();
     if (!editingSub.nama_sub_kegiatan || !editingSub.tanggal_mulai) {
@@ -226,7 +256,6 @@ const ManageKegiatan = () => {
 
         Swal.fire('Berhasil', 'Data Kegiatan diperbarui.', 'success');
         setIsModalOpen(false);
-        // Refresh seluruh data
         fetchKegiatan();
 
     } catch (err) {
@@ -237,65 +266,118 @@ const ManageKegiatan = () => {
     }
   };
 
-  // --- HANDLERS IMPORT/EXPORT ---
-  const handleDownloadTemplate = () => {
-    const csvContent = "data:text/csv;charset=utf-8,nama_kegiatan,nama_sub_kegiatan,deskripsi,tanggal_mulai,tanggal_selesai\nSensus Penduduk 2030,Persiapan,Rapat,2030-01-01,2030-01-31";
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", "template_import_kegiatan.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleDownloadTemplate = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.get(`${API_URL}/api/subkegiatan/template`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob', 
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'template_import_kegiatan.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(err);
+      Swal.fire('Gagal', 'Gagal mengunduh template.', 'error');
+    }
   };
 
   const handleImportClick = () => { fileInputRef.current.click(); };
 
+ // Ganti fungsi handleFileChange yang lama dengan yang ini:
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    // DEBUG 1: Cek File yang akan dikirim
+    console.log("--- MULAI UPLOAD ---");
+    console.log("File Info:", { name: file.name, type: file.type, size: file.size });
+
     const formData = new FormData();
     formData.append('file', file);
     setUploading(true);
+
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post(`${API_URL}/api/subkegiatan/import`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data', 'Authorization': `Bearer ${token}` }
+      const url = `${API_URL}/api/subkegiatan/import`;
+      
+      console.log(`Mengirim POST ke: ${url}`); // Debug URL
+
+      const response = await axios.post(url, formData, {
+        headers: { 
+            'Content-Type': 'multipart/form-data', 
+            'Authorization': `Bearer ${token}` 
+        }
       });
-      const { successCount, failCount } = response.data;
-      Swal.fire('Import Selesai', `Sukses: ${successCount}, Gagal: ${failCount}`, 'info');
+
+      // DEBUG 2: Log Sukses dari Server
+      console.log("Response Sukses:", response.data);
+
+      const { successCount, failCount, errors } = response.data;
+      
+      // Tampilkan pesan detail jika ada error baris di dalam file excel
+      let message = `Sukses: ${successCount} data.`;
+      if (failCount > 0) {
+        message += ` Gagal: ${failCount} baris.`;
+        // Tampilkan detail error baris di console
+        if (errors && errors.length > 0) {
+             console.warn("DETAIL ERROR PER BARIS:", errors);
+             message += " (Cek Console F12 untuk detail kegagalan)";
+        }
+      }
+
+      Swal.fire({
+          title: 'Import Selesai',
+          text: message,
+          icon: failCount > 0 ? 'warning' : 'success'
+      });
+      
       setExpandedRow(null);
       fetchKegiatan(); 
+
     } catch (err) {
-      Swal.fire('Error', 'Gagal import data.', 'error');
+      // DEBUG 3: Log Error Jaringan/Server
+      console.error("--- ERROR IMPORT ---", err);
+
+      let title = 'Gagal Import';
+      let errorMessage = 'Terjadi kesalahan sistem.';
+
+      if (err.response) {
+          // Server merespon dengan status code di luar 2xx (misal 404, 422, 500)
+          console.log("Status Code:", err.response.status);
+          console.log("Data Error dari Server:", err.response.data);
+
+          if (err.response.status === 404) {
+              errorMessage = "URL Import tidak ditemukan (404). Cek route backend.";
+          } else if (err.response.status === 422) {
+              // Error Validasi (misal file bukan excel)
+              title = 'Validasi Gagal';
+              const errorData = err.response.data.errors || err.response.data.message;
+              errorMessage = typeof errorData === 'object' 
+                  ? JSON.stringify(errorData) 
+                  : errorData;
+          } else if (err.response.data && err.response.data.message) {
+              // Pesan error umum dari backend
+              errorMessage = err.response.data.message;
+          }
+      } else if (err.request) {
+          errorMessage = "Tidak ada respon dari server. Pastikan backend berjalan.";
+      } else {
+          errorMessage = err.message;
+      }
+
+      Swal.fire(title, errorMessage, 'error');
     } finally {
       setUploading(false);
-      e.target.value = null;
+      e.target.value = null; // Reset input file
     }
-  };
-
-  // --- HELPER ---
-  const formatDateRange = (startDate, endDate) => {
-    if (!startDate || !endDate) return '-';
-    const options = { day: 'numeric', month: 'short', year: 'numeric' };
-    const start = new Date(startDate).toLocaleDateString('id-ID', options);
-    const end = new Date(endDate).toLocaleDateString('id-ID', options);
-    return `${start} - ${end}`;
-  };
-
-  const getComputedStatus = (startDate, endDate) => {
-    if (!startDate || !endDate) return { label: '?', className: 'bg-gray-100' };
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start) return { label: 'Akan Datang', className: 'bg-blue-100 text-blue-700' };
-    if (now > end) return { label: 'Selesai', className: 'bg-green-100 text-green-700' };
-    return { label: 'Sedang Proses', className: 'bg-yellow-100 text-yellow-700' };
   };
 
   if (loading) return <div className="text-center py-10 text-gray-500">Memuat data...</div>;
@@ -305,7 +387,6 @@ const ManageKegiatan = () => {
     <div className="w-full relative">
       <input type="file" ref={fileInputRef} onChange={handleFileChange} accept=".csv, .xlsx, .xls" className="hidden" />
 
-      {/* HEADER */}
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <div className="text-gray-500 text-sm">Kelola daftar Survei/Sensus.</div>
         <div className="flex gap-2">
@@ -315,32 +396,47 @@ const ManageKegiatan = () => {
         </div>
       </div>
 
-      {/* FILTER & SEARCH */}
       <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 mb-6 flex flex-col md:flex-row gap-4 items-center justify-between">
-         <div className="relative w-full md:w-1/2">
+         <div className="relative w-full md:w-1/3">
             <FaSearch className="absolute left-3 top-3 text-gray-400" />
             <input
               type="text"
-              placeholder="Cari Survei/Sensus, Kegiatan, atau pengawas..."
+              placeholder="Cari Survei/Sensus..."
               className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm transition bg-gray-50 focus:bg-white"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
          </div>
-         <div className="flex items-center gap-3 w-full md:w-auto">
-            <div className="flex items-center gap-2 text-gray-500 text-sm font-bold"><FaFilter /> Tahun:</div>
-            <select
-               className="px-4 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-white cursor-pointer"
-               value={filterYear}
-               onChange={(e) => setFilterYear(e.target.value)}
-            >
-               <option value="">Semua</option>
-               {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
-            </select>
+         
+         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
+            <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm font-bold flex items-center gap-1"><FaCalendarAlt /> Tahun:</span>
+                <select
+                   className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-white cursor-pointer"
+                   value={filterYear}
+                   onChange={(e) => setFilterYear(e.target.value)}
+                >
+                   <option value="">Semua</option>
+                   {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+                <span className="text-gray-500 text-sm font-bold flex items-center gap-1"><FaFilter /> Status:</span>
+                <select
+                   className="px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-white cursor-pointer"
+                   value={filterStatus}
+                   onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                   <option value="">Semua Status</option>
+                   <option value="Sedang Proses">Sedang Proses</option>
+                   <option value="Akan Datang">Akan Datang</option>
+                   <option value="Selesai">Selesai</option>
+                </select>
+            </div>
          </div>
       </div>
 
-      {/* LIST KEGIATAN */}
       <div className="space-y-4">
         {kegiatan.length === 0 ? (
           <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
@@ -348,8 +444,8 @@ const ManageKegiatan = () => {
           </div>
         ) : filteredKegiatan.length === 0 ? (
           <div className="text-center py-12 bg-gray-50 rounded-xl border border-dashed border-gray-300">
-            <p className="text-gray-500 font-medium">Tidak ditemukan Survei/Sensus yang cocok.</p>
-            <button onClick={() => {setSearchTerm(''); setFilterYear('')}} className="mt-2 text-[#1A2A80] text-sm underline hover:text-blue-800">Reset Filter</button>
+            <p className="text-gray-500 font-medium">Tidak ditemukan data yang cocok dengan filter.</p>
+            <button onClick={() => {setSearchTerm(''); setFilterYear(''); setFilterStatus('');}} className="mt-2 text-[#1A2A80] text-sm underline hover:text-blue-800">Reset Filter</button>
           </div>
         ) : (
           filteredKegiatan.map((item) => {
@@ -357,7 +453,6 @@ const ManageKegiatan = () => {
             
             return (
               <div key={item.id} className={`bg-white rounded-xl shadow-sm border transition-all duration-200 overflow-hidden ${isExpanded ? 'border-blue-300 ring-1 ring-blue-100' : 'border-gray-100 hover:border-blue-200'}`}>
-                {/* Header Row Kegiatan */}
                 <div onClick={() => handleRowClick(item.id)} className={`px-6 py-4 cursor-pointer flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-colors ${isExpanded ? 'bg-blue-50/30' : 'bg-white hover:bg-gray-50'}`}>
                   <div className="flex items-center gap-4 flex-1">
                     <div className={`p-2 rounded-full transition-transform duration-200 ${isExpanded ? 'bg-blue-100 text-[#1A2A80]' : 'text-gray-400 bg-gray-100'}`}>
@@ -369,13 +464,11 @@ const ManageKegiatan = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 pl-12 md:pl-0">
-                    {/* Edit Kegiatan Induk */}
                     <Link to={`/admin/manage-kegiatan/edit/${item.id}`} onClick={(e) => e.stopPropagation()} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded transition" title="Edit Survei/Sensus & Atur Honor"><FaEdit /></Link>
                     <button onClick={(e) => handleDelete(e, item.id)} className="p-2 text-red-600 hover:bg-red-50 rounded transition" title="Hapus Survei/Sensus"><FaTrash /></button>
                   </div>
                 </div>
 
-                {/* Sub Kegiatan List (Accordion Content) */}
                 {isExpanded && (
                   <div className="bg-gray-50/50 border-t border-gray-100 animate-fade-in-down">
                     {item.sub_list && item.sub_list.length > 0 ? (
@@ -408,7 +501,6 @@ const ManageKegiatan = () => {
                                   </td>
                                   <td className="px-4 py-3 text-right">
                                     <div className="flex justify-end gap-2">
-                                        {/* Detail Button */}
                                         <button 
                                             onClick={() => navigate(`/admin/manage-kegiatan/detail/${sub.id}`)} 
                                             className="text-gray-400 hover:text-[#1A2A80] p-1.5 rounded hover:bg-blue-50 transition"
@@ -416,7 +508,6 @@ const ManageKegiatan = () => {
                                         >
                                             <FaInfoCircle />
                                         </button>
-                                        {/* Edit Button - Membuka Modal */}
                                         <button 
                                             onClick={(e) => handleEditSubClick(e, sub)} 
                                             className="text-gray-400 hover:text-green-600 p-1.5 rounded hover:bg-green-50 transition"
@@ -424,7 +515,6 @@ const ManageKegiatan = () => {
                                         >
                                             <FaEdit />
                                         </button>
-                                        {/* Delete Button - Hapus Langsung */}
                                         <button 
                                             onClick={(e) => handleDeleteSub(e, sub.id)} 
                                             className="text-gray-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 transition"
@@ -454,7 +544,6 @@ const ManageKegiatan = () => {
         )}
       </div>
 
-      {/* --- MODAL EDIT SUB KEGIATAN --- */}
       {isModalOpen && editingSub && (
         <div className="fixed inset-0 bg-black/60 flex justify-center items-center z-50 p-4 backdrop-blur-sm animate-fade-in-up">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">

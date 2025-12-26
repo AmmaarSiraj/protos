@@ -1,6 +1,6 @@
-// src/pages/Perencanaan.jsx
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { useDropzone } from 'react-dropzone'; // Import Dropzone
 import axios from 'axios';
 import Swal from 'sweetalert2'; 
 import * as XLSX from 'xlsx'; 
@@ -16,15 +16,18 @@ import {
   FaTrash,
   FaSearch, 
   FaFilter,
-  FaExclamationCircle,
   FaPaperPlane,
   FaTimes,
+  FaExclamationCircle,
+  FaCheck,
+  FaArrowLeft,
+  FaExclamationTriangle,
+  FaChartPie,
   FaBriefcase,
-  FaCalendarAlt,
-  FaChartPie
+  FaCalendarAlt
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 const getToken = () => localStorage.getItem('token');
 
 const Perencanaan = () => {
@@ -34,44 +37,39 @@ const Perencanaan = () => {
   const [allPerencanaan, setAllPerencanaan] = useState([]); 
   const [isLoading, setIsLoading] = useState(true);
 
-  // --- STATE INCOME & LIMIT (Untuk Progress Bar) ---
-  const [incomeStats, setIncomeStats] = useState({}); // Map: "mitraId-Year-Month" -> TotalIncome
-  const [limitMap, setLimitMap] = useState({});       // Map: "Year" -> Limit
+  // --- STATE INCOME & LIMIT ---
+  const [incomeStats, setIncomeStats] = useState({}); 
+  const [limitMap, setLimitMap] = useState({});       
 
   // --- STATE FILTER & SEARCH ---
   const [searchTerm, setSearchTerm] = useState('');
   const [filterYear, setFilterYear] = useState('');
 
-  // --- STATE DROPDOWN & CACHE ---
+  // --- STATE UI ---
   const [expandedTaskId, setExpandedTaskId] = useState(null); 
   const [membersCache, setMembersCache] = useState({});
   const [loadingMembers, setLoadingMembers] = useState(false);
 
-  // --- STATE MODAL IMPORT ---
+  // --- STATE MODAL IMPORT BARU ---
   const [showImportModal, setShowImportModal] = useState(false);
-  const [importKegiatanList, setImportKegiatanList] = useState([]);
-  const [importSubList, setImportSubList] = useState([]);
-  const [selectedKegiatanId, setSelectedKegiatanId] = useState('');
-  const [selectedSubId, setSelectedSubId] = useState('');
-  const [importFile, setImportFile] = useState(null);
-  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [importStep, setImportStep] = useState('upload'); // 'upload' | 'preview'
+  const [previewData, setPreviewData] = useState([]);
+  const [importWarnings, setImportWarnings] = useState([]);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Helper Format Tanggal
+  // Helper Format
   const formatDate = (dateString) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('id-ID', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
+      day: 'numeric', month: 'short', year: 'numeric' 
     });
   };
 
-  // Helper Format Rupiah
   const formatRupiah = (num) => {
     return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
   };
 
-  // 1. Fetch Data Lengkap & Kalkulasi
+  // 1. Fetch Data Utama
   const fetchPerencanaan = async () => {
     setIsLoading(true);
     try {
@@ -88,9 +86,7 @@ const Perencanaan = () => {
         const perencanaanData = resPerencanaan.data.data;
         setAllPerencanaan(perencanaanData); 
 
-        // --- PREPARE CALCULATION MAPS ---
-        
-        // A. Honor Map
+        // Mapping Honor
         const honorMap = {};
         if(resHonor.data.data) {
             resHonor.data.data.forEach(h => {
@@ -98,7 +94,7 @@ const Perencanaan = () => {
             });
         }
 
-        // B. Plan Date Map
+        // Mapping Tanggal
         const planMap = {};
         perencanaanData.forEach(p => {
             if (p.tanggal_mulai) {
@@ -111,7 +107,7 @@ const Perencanaan = () => {
             }
         });
 
-        // C. Limit Map
+        // Mapping Limit
         const limits = {};
         if (resAturan.data.data) {
             resAturan.data.data.forEach(a => {
@@ -121,7 +117,7 @@ const Perencanaan = () => {
         }
         setLimitMap(limits);
 
-        // D. Calculate Income Stats
+        // Calculate Income Stats
         const stats = {};
         const rawKelompok = resKelompok.data.data || resKelompok.data;
         const membersMap = {}; 
@@ -161,104 +157,103 @@ const Perencanaan = () => {
     fetchPerencanaan();
   }, []);
 
-  // 2. LOGIKA IMPORT (MODAL)
+  // 2. LOGIKA IMPORT BARU (DROPZONE & PREVIEW)
   useEffect(() => {
-    if (showImportModal) {
-      axios.get(`${API_URL}/api/kegiatan`, { headers: { Authorization: `Bearer ${getToken()}` } })
-        .then(res => setImportKegiatanList(res.data.data || res.data))
-        .catch(err => console.error(err));
+    if (!showImportModal) {
+        // Reset state modal saat ditutup
+        setImportStep('upload');
+        setPreviewData([]);
+        setImportWarnings([]);
+        setIsProcessing(false);
     }
   }, [showImportModal]);
 
-  const handleKegiatanChange = async (e) => {
-    const kId = e.target.value;
-    setSelectedKegiatanId(kId);
-    setSelectedSubId('');
-    setImportSubList([]);
-    
-    if (kId) {
-        try {
-            const res = await axios.get(`${API_URL}/api/subkegiatan/kegiatan/${kId}`, { 
-                headers: { Authorization: `Bearer ${getToken()}` } 
-            });
-            setImportSubList(res.data.data || res.data);
-        } catch (err) {
-            console.error(err);
-        }
-    }
-  };
-
-  const handleProcessImport = async () => {
-    if (!selectedSubId || !importFile) {
-        Swal.fire('Error', 'Pilih kegiatan dan file terlebih dahulu!', 'error');
-        return;
-    }
+  const onDrop = async (acceptedFiles) => {
+    const file = acceptedFiles[0];
+    if (!file) return;
 
     const formData = new FormData();
-    formData.append('file', importFile);
-    formData.append('id_subkegiatan', selectedSubId);
+    formData.append('file', file);
 
-    setIsPreviewing(true);
+    setIsProcessing(true);
     try {
         const token = getToken();
+        // Backend akan membaca kolom Nama Kegiatan di Excel dan mencari ID-nya otomatis
         const res = await axios.post(`${API_URL}/api/perencanaan/preview-import`, formData, {
             headers: { 
-                'Content-Type': 'multipart/form-data',
-                Authorization: `Bearer ${token}` 
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'multipart/form-data'
             }
         });
 
-        const { valid_data, warnings, subkegiatan } = res.data;
+        const { valid_data, warnings } = res.data;
+        setPreviewData(valid_data || []);
+        setImportWarnings(warnings || []);
 
-        setShowImportModal(false);
-
-        if (warnings.length > 0) {
-            await Swal.fire({
-                title: 'Peringatan Validasi Import',
-                html: `
-                    <div style="text-align:left; max-height: 200px; overflow-y:auto; font-size:12px;">
-                        <p class="font-bold mb-2 text-red-600">${warnings.length} Baris Data Ditolak:</p>
-                        <ul class="list-disc pl-4 text-gray-700">
-                            ${warnings.map(w => `<li>${w}</li>`).join('')}
-                        </ul>
-                        <p class="mt-4 font-bold text-green-600">
-                            ${valid_data.length} data valid siap diproses. Lanjutkan?
-                        </p>
-                    </div>
-                `,
-                icon: 'warning',
-                showCancelButton: true,
-                confirmButtonText: 'Ya, Lanjutkan',
-                cancelButtonText: 'Batal',
-                width: '600px'
-            }).then((result) => {
-                if (result.isConfirmed && valid_data.length > 0) {
-                    goToTambahPerencanaan(subkegiatan, valid_data);
-                }
-            });
+        if (valid_data && valid_data.length > 0) {
+            setImportStep('preview');
         } else {
-            if (valid_data.length > 0) {
-                goToTambahPerencanaan(subkegiatan, valid_data);
-            } else {
-                Swal.fire('Info', 'Tidak ada data valid yang ditemukan dalam file.', 'info');
-            }
+            Swal.fire('Gagal', 'Tidak ada data valid yang ditemukan dalam file.', 'error');
         }
 
     } catch (err) {
         console.error(err);
-        Swal.fire('Gagal', err.response?.data?.message || 'Terjadi kesalahan saat memproses file.', 'error');
+        Swal.fire('Error', err.response?.data?.message || 'Gagal memproses file.', 'error');
     } finally {
-        setIsPreviewing(false);
+        setIsProcessing(false);
     }
   };
 
-  const goToTambahPerencanaan = (subkegiatanData, importedMembers) => {
-    navigate('/perencanaan/tambah', { 
-        state: {
-            preSelectedSubKegiatan: subkegiatanData,
-            importedMembers: importedMembers
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({ 
+    onDrop, 
+    accept: {
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+        'application/vnd.ms-excel': ['.xls'],
+        'text/csv': ['.csv']
+    },
+    multiple: false
+  });
+
+  const handleFinalImport = async () => {
+    setIsProcessing(true);
+    try {
+        const token = getToken();
+        await axios.post(`${API_URL}/api/perencanaan/store-import`, {
+            data: previewData
+        }, { headers: { Authorization: `Bearer ${token}` } });
+
+        Swal.fire('Sukses', `${previewData.length} data berhasil diimport!`, 'success');
+        setShowImportModal(false);
+        fetchPerencanaan(); // Refresh Data List
+    } catch (err) {
+        Swal.fire('Gagal', err.response?.data?.message || 'Gagal menyimpan data.', 'error');
+    } finally {
+        setIsProcessing(false);
+    }
+  };
+
+  const handleDownloadTemplate = () => {
+    const rows = [
+      { 
+          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
+          "sobat_id": "3373xxx", 
+          "jabatan": "Petugas Pendataan Lapangan (PPL Survei)",
+          "volume": 1
+        },
+        { 
+          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
+          "sobat_id": "3373xxx", 
+          "jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
+          "volume": 1
         }
-    });
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+    XLSX.writeFile(workbook, "template_import_perencanaan.xlsx");
   };
 
   // 3. LOGIKA FILTER & SORT
@@ -324,7 +319,7 @@ const Perencanaan = () => {
     }
   };
 
-  // --- ACTIONS (EDIT/DELETE) ---
+  // 4. ACTION HANDLERS
   const handleDelete = async (e, id) => {
     e.stopPropagation();
     const result = await Swal.fire({
@@ -360,21 +355,20 @@ const Perencanaan = () => {
     e.stopPropagation();
 
     // 1. VALIDASI: Cek Over Limit (Error) & Under Limit (Warning)
-    let errorMessages = [];
-    let warningMessages = [];
+    let warningMessages = []; // Tidak ada blocker, semua warning
 
     idsArray.forEach(id => {
         const plan = allPerencanaan.find(p => p.id_perencanaan === id);
         if (!plan) return;
 
-        // A. Validasi Volume Tugas Subkegiatan
+        // A. Validasi Volume
         if (plan.total_alokasi > plan.target_volume) {
-            errorMessages.push(`❌ <b>${plan.nama_sub_kegiatan}</b>: Volume melebihi target (${plan.total_alokasi}/${plan.target_volume}).`);
+            warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume melebihi target (${plan.total_alokasi}/${plan.target_volume}).`);
         } else if (plan.total_alokasi < plan.target_volume) {
             warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume belum terpenuhi (${plan.total_alokasi}/${plan.target_volume}).`);
         }
 
-        // B. Validasi Pendapatan Mitra
+        // B. Validasi Pendapatan
         const members = membersCache[id] || [];
         const taskDate = new Date(plan.tanggal_mulai);
         const y = taskDate.getFullYear();
@@ -387,42 +381,34 @@ const Perencanaan = () => {
                 const totalIncome = incomeStats[key] || 0;
                 
                 if (totalIncome > monthlyLimit) {
-                    errorMessages.push(`❌ <b>${member.nama_lengkap}</b>: Pendapatan (${formatRupiah(totalIncome)}) melebihi batas.`);
+                    warningMessages.push(`⚠️ <b>${member.nama_lengkap}</b>: Pendapatan Total Bulan Ini (${formatRupiah(totalIncome)}) melebihi batas.`);
                 } 
             });
         }
     });
 
-    // 2. JIKA ADA ERROR (BLOCKER)
-    if (errorMessages.length > 0) {
-        const uniqueErrors = [...new Set(errorMessages)];
-        return Swal.fire({
-            title: 'Tidak Bisa Meneruskan',
-            html: `<div style="text-align:left; font-size:13px;">Terdapat pelanggaran batas:<br/><br/>${uniqueErrors.join('<br/>')}</div>`,
-            icon: 'error',
-            confirmButtonText: 'Perbaiki Dulu'
-        });
-    }
-
-    // 3. JIKA ADA WARNING (KONFIRMASI)
     if (warningMessages.length > 0) {
         const uniqueWarnings = [...new Set(warningMessages)];
         const confirmResult = await Swal.fire({
-            title: 'Peringatan: Belum Sempurna',
-            html: `<div style="text-align:left; font-size:13px;">Data belum mencapai target/batas:<br/><br/>${uniqueWarnings.join('<br/>')}<br/><br/><b>Apakah Anda yakin tetap ingin meneruskan?</b></div>`,
+            title: 'Peringatan Batas/Volume',
+            html: `
+                <div style="text-align:left; font-size:13px; max-height:200px; overflow-y:auto;">
+                    Beberapa data melebihi target atau batas honor:<br/><br/>
+                    ${uniqueWarnings.join('<br/>')}
+                    <br/><br/>
+                    <b>Apakah Anda ingin tetap meneruskan data ini?</b>
+                </div>
+            `,
             icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#f59e0b', 
             cancelButtonColor: '#d33',
-            confirmButtonText: 'Ya, Teruskan Saja',
+            confirmButtonText: 'Ya, Tetap Teruskan',
             cancelButtonText: 'Batal'
         });
 
         if (!confirmResult.isConfirmed) return;
-    }
-
-    // 4. JIKA LOLOS
-    if (warningMessages.length === 0) {
+    } else {
         const finalConfirm = await Swal.fire({
             title: 'Teruskan ke Penugasan?',
             html: `Anda akan menyalin data perencanaan <b>${title}</b> ke menu Penugasan.<br/>Data Perencanaan asli tidak akan berubah.`,
@@ -448,32 +434,13 @@ const Perencanaan = () => {
 
     } catch (err) {
       console.error(err);
-      const msg = err.response?.data?.message || 'Gagal meneruskan data.';
-      Swal.fire('Gagal', msg, 'error');
+      Swal.fire('Gagal', err.response?.data?.message || 'Gagal meneruskan data.', 'error');
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const rows = [
-      { sobat_id: "337322040034", nama_lengkap: "Contoh Nama Mitra", posisi: "Petugas Pendataan Lapangan (PPL Survei)" },
-      { sobat_id: "337322040036", nama_lengkap: "Contoh Mitra Dua", posisi: "Petugas Pemeriksaan Lapangan (PML Survei)" }
-    ];
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-    XLSX.writeFile(workbook, "template_import_perencanaan.xlsx");
-  };
-
-  // --- LOADING STATE ---
-  if (isLoading) return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-10 h-10 border-4 border-blue-100 border-t-[#1A2A80] rounded-full animate-spin mb-4"></div>
-        <p className="text-gray-500 font-medium">Memuat data perencanaan...</p>
-    </div>
-  );
+  if (isLoading) return <div className="text-center py-10 text-gray-500">Memuat data Perencanaan...</div>;
 
   return (
-    // Container disesuaikan dengan Layout (max-w-7xl)
     <div className="w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       
       {/* === HEADER SECTION === */}
@@ -798,92 +765,200 @@ const Perencanaan = () => {
         )}
       </div>
 
-      {/* --- MODAL IMPORT POPUP --- */}
+      {/* --- MODAL IMPORT BARU (BOX & TABLE) --- */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/50 backdrop-blur-sm transition-opacity">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-fade-in-up">
-                <div className="bg-[#1A2A80] px-6 py-4 flex justify-between items-center text-white">
-                    <h3 className="font-bold text-lg flex items-center gap-2">
-                        <FaFileUpload className="text-blue-200" /> Import Perencanaan
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh] animate-fade-in-down">
+                
+                {/* HEADER MODAL */}
+                <div className="bg-[#1A2A80] p-4 flex justify-between items-center text-white shrink-0">
+                    <h3 className="font-bold text-lg">
+                        {importStep === 'upload' ? 'Upload File Perencanaan' : 'Preview Data Import'}
                     </h3>
-                    <button onClick={() => setShowImportModal(false)} className="text-white/70 hover:text-white transition-colors">
-                        <FaTimes size={18} />
-                    </button>
+                    <button onClick={() => setShowImportModal(false)} className="hover:text-red-300"><FaTimes /></button>
                 </div>
 
-                <div className="p-6 space-y-5">
+                {/* BODY MODAL */}
+                <div className="p-6 overflow-y-auto flex-1">
                     
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pilih Survei/Sensus (Induk)</label>
-                        <select 
-                            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1A2A80] focus:border-transparent outline-none transition"
-                            value={selectedKegiatanId}
-                            onChange={handleKegiatanChange}
+                    {/* TAMPILAN 1: DRAG & DROP BOX */}
+                    {importStep === 'upload' && (
+                        <div 
+                            {...getRootProps()} 
+                            className={`border-3 border-dashed rounded-xl h-64 flex flex-col items-center justify-center cursor-pointer transition-all
+                                ${isDragActive ? 'border-green-500 bg-green-50 scale-95' : 'border-gray-300 hover:border-[#1A2A80] hover:bg-blue-50'}
+                            `}
                         >
-                            <option value="">-- Pilih Kegiatan Induk --</option>
-                            {importKegiatanList.map(k => (
-                                <option key={k.id} value={k.id}>{k.nama_kegiatan}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Pilih Kegiatan (Sub)</label>
-                        <select 
-                            className="w-full border border-gray-300 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-[#1A2A80] focus:border-transparent outline-none transition disabled:bg-gray-100 disabled:text-gray-400"
-                            value={selectedSubId}
-                            onChange={(e) => setSelectedSubId(e.target.value)}
-                            disabled={!selectedKegiatanId}
-                        >
-                            <option value="">-- Pilih Sub Kegiatan --</option>
-                            {importSubList.map(sub => (
-                                <option key={sub.id} value={sub.id}>{sub.nama_sub_kegiatan}</option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:bg-blue-50 hover:border-blue-300 transition-colors relative group">
-                        <input 
-                            type="file" 
-                            accept=".csv, .xlsx, .xls"
-                            onChange={(e) => setImportFile(e.target.files[0])}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                        />
-                        <div className="space-y-3 pointer-events-none">
-                            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto group-hover:bg-blue-100 transition-colors">
-                                <FaFileUpload className="text-gray-400 text-xl group-hover:text-[#1A2A80]" />
-                            </div>
-                            {importFile ? (
-                                <div>
-                                    <p className="text-sm font-bold text-[#1A2A80]">{importFile.name}</p>
-                                    <p className="text-xs text-green-600 mt-1">File siap diunggah</p>
-                                </div>
+                            <input {...getInputProps()} />
+                            <FaFileUpload className={`text-5xl mb-4 ${isDragActive ? 'text-green-500' : 'text-gray-400'}`} />
+                            {isProcessing ? (
+                                <p className="text-gray-600 font-bold animate-pulse">Sedang memproses file...</p>
                             ) : (
-                                <div>
-                                    <p className="text-sm font-medium text-gray-600">Klik atau tarik file Excel/CSV</p>
-                                    <p className="text-xs text-gray-400 mt-1">Format: .xlsx, .xls, .csv</p>
+                                <div className="text-center">
+                                    <p className="text-lg font-bold text-gray-700">Tarik & Lepas file Excel di sini</p>
+                                    <p className="text-sm text-gray-500 mt-1">atau klik untuk memilih file</p>
+                                    <p className="text-xs text-gray-400 mt-4">Format: .xlsx, .xls, .csv</p>
                                 </div>
                             )}
                         </div>
-                    </div>
+                    )}
 
+                    {/* TAMPILAN 2: TABEL PREVIEW */}
+                    {importStep === 'preview' && (
+                        <div className="space-y-4">
+                            {/* Peringatan (Jika Ada) */}
+                            {importWarnings.length > 0 && (
+                                <div className="bg-amber-50 border-l-4 border-amber-500 p-4 text-sm text-amber-800 mb-4 max-h-32 overflow-y-auto">
+                                    <div className="font-bold flex items-center gap-2 mb-1">
+                                        <FaExclamationTriangle /> {importWarnings.length} Baris Data Dilewati:
+                                    </div>
+                                    <ul className="list-disc pl-5 space-y-1">
+                                        {importWarnings.map((w, i) => <li key={i}>{w}</li>)}
+                                    </ul>
+                                </div>
+                            )}
+
+                            <div className="flex justify-between items-center">
+                                <span className="font-bold text-gray-700">Preview Data ({previewData.length} Baris)</span>
+                                <button 
+                                    onClick={() => { setImportStep('upload'); setPreviewData([]); }}
+                                    className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+                                >
+                                    <FaArrowLeft /> Upload Ulang
+                                </button>
+                            </div>
+
+                            <div className="border rounded-lg overflow-hidden bg-white">
+                                <div className="overflow-x-auto max-h-[400px]">
+                                    <table className="min-w-full text-xs text-left">
+                                        <thead className="bg-gray-100 font-bold text-gray-700 uppercase sticky top-0 shadow-sm z-10">
+                                            <tr>
+                                                <th className="px-4 py-3">Survei/Sensus</th>
+                                                <th className="px-4 py-3">Kegiatan</th>
+                                                <th className="px-4 py-3">Mitra (Jabatan)</th>
+                                                <th className="px-4 py-3 text-center">Simulasi Volume</th>
+                                                <th className="px-4 py-3 text-center">Simulasi Honor</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                            {previewData.map((row, idx) => {
+                                                const s = row.stats;
+                                                
+                                                // -- CALC VOLUME --
+                                                const totalVol = s.existing_vol + row.volume;
+                                                const pctExistVol = s.target_vol > 0 ? (s.existing_vol / s.target_vol) * 100 : 0;
+                                                const pctNewVol = s.target_vol > 0 ? (row.volume / s.target_vol) * 100 : 0;
+                                                const isVolOver = totalVol > s.target_vol;
+
+                                                // -- CALC INCOME --
+                                                const totalInc = s.existing_income + s.new_income;
+                                                const pctExistInc = s.limit_honor > 0 ? (s.existing_income / s.limit_honor) * 100 : 0;
+                                                const pctNewInc = s.limit_honor > 0 ? (s.new_income / s.limit_honor) * 100 : 0;
+                                                const isIncOver = s.limit_honor > 0 && totalInc > s.limit_honor;
+
+                                                return (
+                                                    <tr key={idx} className="hover:bg-gray-50">
+                                                        
+                                                        {/* KOLOM SURVEI/SENSUS (PISAH) */}
+                                                        <td className="px-4 py-2">
+                                                            <div className="font-bold text-gray-800 truncate max-w-[200px]" title={row.nama_kegiatan}>
+                                                                {row.nama_kegiatan}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* KOLOM KEGIATAN (PISAH) */}
+                                                        <td className="px-4 py-2">
+                                                            <div className="font-bold text-gray-700 truncate max-w-[200px]" title={row.nama_sub_kegiatan}>
+                                                                {row.nama_sub_kegiatan}
+                                                            </div>
+                                                        </td>
+
+                                                        {/* INFO MITRA */}
+                                                        <td className="px-4 py-2">
+                                                            <div className="font-bold text-gray-700 font-mono">{row.sobat_id}</div>
+                                                            <div className="text-[10px] text-gray-500">
+                                                                {row.nama_jabatan} ({row.volume} Unit)
+                                                            </div>
+                                                        </td>
+
+                                                        {/* BAR VOLUME */}
+                                                        <td className="px-4 py-2 align-middle">
+                                                            <div className="flex justify-between text-[10px] mb-1">
+                                                                <span>
+                                                                    Real: <b>{s.existing_vol}</b> + <span className="text-blue-600 font-bold">{row.volume}</span>
+                                                                </span>
+                                                                <span className={isVolOver ? "text-red-600 font-bold" : "text-gray-500"}>
+                                                                    Target: {s.target_vol}
+                                                                </span>
+                                                            </div>
+                                                            <div className="w-full h-2 bg-gray-200 rounded-full flex overflow-hidden">
+                                                                <div style={{ width: `${Math.min(pctExistVol, 100)}%` }} className="bg-gray-400 h-full"></div>
+                                                                <div 
+                                                                    style={{ width: `${Math.min(pctNewVol, 100 - Math.min(pctExistVol, 100))}%` }} 
+                                                                    className={`h-full ${isVolOver ? 'bg-red-500' : 'bg-blue-500'} relative`}
+                                                                >
+                                                                    <div className="absolute inset-0 bg-white/20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}}></div>
+                                                                </div>
+                                                            </div>
+                                                            {isVolOver && <div className="text-[9px] text-red-500 mt-1 font-bold text-center">Over Target!</div>}
+                                                        </td>
+
+                                                        {/* BAR INCOME DENGAN LABEL LIMIT */}
+                                                        <td className="px-4 py-2 align-middle">
+                                                            <div className="flex justify-between text-[10px] mb-1">
+                                                                <span>
+                                                                    Total: <b>{formatRupiah(totalInc)}</b>
+                                                                </span>
+                                                                <span className="text-gray-400">
+                                                                    Limit: {s.limit_honor > 0 ? formatRupiah(s.limit_honor) : '-'}
+                                                                </span>
+                                                            </div>
+                                                            {s.limit_honor > 0 ? (
+                                                                <>
+                                                                    <div className="w-full h-2 bg-gray-200 rounded-full flex overflow-hidden">
+                                                                        <div style={{ width: `${Math.min(pctExistInc, 100)}%` }} className="bg-green-600 h-full"></div>
+                                                                        <div 
+                                                                            style={{ width: `${Math.min(pctNewInc, 100 - Math.min(pctExistInc, 100))}%` }} 
+                                                                            className={`h-full ${isIncOver ? 'bg-red-500' : 'bg-green-400'} relative`}
+                                                                        >
+                                                                            <div className="absolute inset-0 bg-white/20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}}></div>
+                                                                        </div>
+                                                                    </div>
+                                                                    {isIncOver && <div className="text-[9px] text-red-500 mt-1 font-bold text-center">Melebihi Batas!</div>}
+                                                                </>
+                                                            ) : (
+                                                                <div className="text-[10px] text-gray-400 italic text-center">Tanpa Limit</div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                <div className="p-5 bg-gray-50 flex justify-end gap-3 border-t border-gray-100">
+                {/* FOOTER MODAL */}
+                <div className="p-4 bg-gray-50 border-t flex justify-end gap-3">
                     <button 
                         onClick={() => setShowImportModal(false)} 
-                        className="px-5 py-2.5 rounded-xl text-gray-600 hover:bg-gray-200 text-sm font-bold transition-colors"
+                        className="px-4 py-2 rounded-lg text-gray-600 font-medium hover:bg-gray-200 transition"
                     >
                         Batal
                     </button>
-                    <button 
-                        onClick={handleProcessImport} 
-                        disabled={isPreviewing || !selectedSubId || !importFile}
-                        className="px-5 py-2.5 rounded-xl bg-[#1A2A80] text-white hover:bg-blue-900 text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shadow-md transition-all"
-                    >
-                        {isPreviewing && <span className="animate-spin w-4 h-4 border-2 border-white/30 border-t-white rounded-full"></span>}
-                        Proses & Lanjut
-                    </button>
+                    
+                    {importStep === 'preview' && (
+                        <button 
+                            onClick={handleFinalImport}
+                            disabled={isProcessing || previewData.length === 0}
+                            className="bg-[#1A2A80] hover:bg-blue-900 text-white px-6 py-2 rounded-lg font-bold shadow-lg transition disabled:opacity-50 flex items-center gap-2"
+                        >
+                            {isProcessing ? 'Menyimpan...' : <><FaCheck /> Proses Import</>}
+                        </button>
+                    )}
                 </div>
             </div>
         </div>

@@ -24,16 +24,13 @@ class TransaksiController extends Controller
 
         try {
             // 1. Ambil Aturan Batas Honor Dasar (Bulanan)
-            // Node.js: SELECT batas_honor FROM aturan_periode WHERE periode = ? LIMIT 1
             $aturan = DB::table('aturan_periode')
                 ->where('periode', $tahun)
-                ->first(); // Mengambil satu baris
+                ->first(); 
 
             $batasHonorDasar = $aturan ? (int)$aturan->batas_honor : 0;
 
             // 2. Tentukan Limit Periode Berdasarkan Filter
-            // Logic: Jika akumulasi setahun ('all' atau null), limit dikali 12.
-            // Jika bulan spesifik, limit tetap (bulanan).
             $limitPeriode = 0;
             if (!$bulan || $bulan === 'all') {
                 $limitPeriode = $batasHonorDasar * 12;
@@ -42,16 +39,6 @@ class TransaksiController extends Controller
             }
 
             // 3. Query Transaksi (Complex Join)
-            /* Node.js SQL Logic:
-               SELECT m.id, m.nama_lengkap, ... SUM(h.tarif * kp.volume_tugas)
-               FROM mitra m 
-               JOIN kelompok_penugasan kp ...
-               JOIN penugasan p ...
-               JOIN subkegiatan s ...
-               JOIN honorarium h ON (h.id_subkegiatan = s.id AND h.kode_jabatan = kp.kode_jabatan)
-               WHERE YEAR...
-            */
-
             $query = DB::table('mitra as m')
                 ->select(
                     'm.id',
@@ -68,6 +55,9 @@ class TransaksiController extends Controller
                     $join->on('h.id_subkegiatan', '=', 's.id')
                          ->on('h.kode_jabatan', '=', 'kp.kode_jabatan');
                 })
+                // --- PERUBAHAN DI SINI: Filter Status Penugasan ---
+                ->where('p.status_penugasan', '=', 'disetujui') 
+                // --------------------------------------------------
                 // Filter Tahun (MySQL YEAR function)
                 ->whereYear('s.tanggal_mulai', $tahun);
 
@@ -83,7 +73,6 @@ class TransaksiController extends Controller
                 ->get();
 
             // 4. Format Hasil untuk Frontend
-            // Map data untuk menambahkan status_aman dan limit_periode
             $result = $rows->map(function ($row) use ($limitPeriode) {
                 // Konversi string angka ke integer/float agar aman di JS
                 $pendapatan = (float) $row->total_pendapatan;
@@ -93,20 +82,18 @@ class TransaksiController extends Controller
                     'nama_lengkap' => $row->nama_lengkap,
                     'sobat_id' => $row->sobat_id,
                     'total_pendapatan' => $pendapatan,
-                    // Field tambahan untuk frontend logic
                     'pendapatan_terfilter' => $pendapatan,
                     'limit_periode' => $limitPeriode,
-                    'status_aman' => $pendapatan <= $limitPeriode // return boolean
+                    'status_aman' => $pendapatan <= $limitPeriode 
                 ];
             });
 
             return response()->json($result);
 
         } catch (\Exception $e) {
-            // Log error jika perlu: \Log::error($e->getMessage());
             return response()->json([
                 'error' => 'Gagal memuat data transaksi.',
-                'details' => $e->getMessage() // Opsional, bisa dihapus di production
+                'details' => $e->getMessage() 
             ], 500);
         }
     }

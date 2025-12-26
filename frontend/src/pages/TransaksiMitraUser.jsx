@@ -6,10 +6,12 @@ import {
   FaFilter, 
   FaSearch, 
   FaCheckCircle, 
-  FaExclamationTriangle 
+  FaExclamationTriangle,
+  FaChevronLeft,
+  FaChevronRight 
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const TransaksiMitraUser = () => {
   const navigate = useNavigate();
@@ -20,6 +22,10 @@ const TransaksiMitraUser = () => {
   const [selectedYear, setSelectedYear] = useState(currentYear);
   const [selectedMonth, setSelectedMonth] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // --- STATE PAGINATION ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const years = [currentYear - 1, currentYear, currentYear + 1];
   const months = [
@@ -58,6 +64,23 @@ const TransaksiMitraUser = () => {
       item.nama_lengkap.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [transaksiList, searchTerm]);
+
+  // Reset ke halaman 1 jika filter atau pencarian berubah
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedYear, selectedMonth, searchTerm]);
+
+  // --- LOGIKA PAGINATION ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(filteredData.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+      setCurrentPage(newPage);
+    }
+  };
 
   const totalHonorSemua = filteredData.reduce((acc, curr) => acc + Number(curr.total_pendapatan), 0);
 
@@ -136,7 +159,7 @@ const TransaksiMitraUser = () => {
                             </td>
                         </tr>
                     ) : (
-                        filteredData.map((item, idx) => (
+                        currentData.map((item, idx) => (
                             <tr 
                                 key={idx} 
                                 onClick={() => navigate(`/transaksi-mitra/${item.id}`)}
@@ -168,6 +191,37 @@ const TransaksiMitraUser = () => {
                 </tbody>
             </table>
         </div>
+
+        {/* --- PAGINATION FOOTER --- */}
+        {!loading && filteredData.length > itemsPerPage && (
+             <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50">
+                <div className="text-xs text-gray-500">
+                   Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredData.length)} dari <strong>{filteredData.length}</strong> mitra
+                </div>
+                
+                <div className="flex items-center gap-2">
+                   <button
+                       onClick={() => handlePageChange(currentPage - 1)}
+                       disabled={currentPage === 1}
+                       className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                   >
+                       <FaChevronLeft size={12} />
+                   </button>
+                   
+                   <span className="text-xs font-bold text-gray-700 px-2">
+                       Hal {currentPage} / {totalPages}
+                   </span>
+                   
+                   <button
+                       onClick={() => handlePageChange(currentPage + 1)}
+                       disabled={currentPage === totalPages}
+                       className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                   >
+                       <FaChevronRight size={12} />
+                   </button>
+                </div>
+             </div>
+         )}
       </div>
 
     </div>

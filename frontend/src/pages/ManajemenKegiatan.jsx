@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { 
   FaChevronDown, 
-  FaChevronUp,
   FaInfoCircle,
   FaCalendarAlt,
   FaSearch,
@@ -14,7 +13,7 @@ import {
   FaChartLine
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ManajemenKegiatan = () => {
   const [kegiatan, setKegiatan] = useState([]);
@@ -27,6 +26,8 @@ const ManajemenKegiatan = () => {
   // State untuk Filter & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [filterYear, setFilterYear] = useState('');
+  // 1. TAMBAHAN: State untuk Filter Status
+  const [filterStatus, setFilterStatus] = useState(''); 
 
   const navigate = useNavigate();
 
@@ -37,6 +38,22 @@ const ManajemenKegiatan = () => {
         if (Array.isArray(response.data.data)) return response.data.data;
     }
     return [];
+  };
+
+  // --- HELPER STATUS (Dipakai juga di Filter) ---
+  const getComputedStatus = (startDate, endDate) => {
+    if (!startDate || !endDate) return { label: 'Jadwal Belum Lengkap', className: 'bg-gray-100 text-gray-500' };
+    const now = new Date();
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    
+    now.setHours(0, 0, 0, 0);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+
+    if (now < start) return { label: 'Akan Datang', className: 'bg-blue-50 text-blue-700 border border-blue-100' };
+    if (now > end) return { label: 'Selesai', className: 'bg-gray-100 text-gray-600 border border-gray-200' };
+    return { label: 'Sedang Proses', className: 'bg-emerald-50 text-emerald-700 border border-emerald-100 animate-pulse' };
   };
 
   // 1. FETCH DATA
@@ -99,6 +116,7 @@ const ManajemenKegiatan = () => {
       .map(item => {
         let filteredSubs = [...(item.sub_list || [])];
 
+        // Filter by Year
         if (filterYear) {
           filteredSubs = filteredSubs.filter(sub => {
              if (!sub.tanggal_mulai) return false;
@@ -106,6 +124,15 @@ const ManajemenKegiatan = () => {
           });
         }
 
+        // 2. TAMBAHAN: Filter by Status
+        if (filterStatus) {
+            filteredSubs = filteredSubs.filter(sub => {
+                const statusObj = getComputedStatus(sub.tanggal_mulai, sub.tanggal_selesai);
+                return statusObj.label === filterStatus;
+            });
+        }
+
+        // Filter by Search Term
         if (searchTerm) {
            const term = searchTerm.toLowerCase();
            const parentMatches = item.nama_kegiatan && item.nama_kegiatan.toLowerCase().includes(term);
@@ -124,17 +151,18 @@ const ManajemenKegiatan = () => {
          const parentMatches = item.nama_kegiatan && item.nama_kegiatan.toLowerCase().includes(term);
          const hasSubs = item.sub_list && item.sub_list.length > 0;
 
+         // Jika sedang filter status atau tahun, hanya tampilkan jika punya sub (anak) yang cocok
+         if (filterStatus || filterYear) {
+             return hasSubs;
+         }
+
          if (searchTerm) {
             return parentMatches || hasSubs;
          }
 
-         if (filterYear) {
-            return hasSubs;
-         }
-
          return true;
       });
-  }, [kegiatan, searchTerm, filterYear]);
+  }, [kegiatan, searchTerm, filterYear, filterStatus]); // Tambahkan filterStatus ke dependency
 
   // List Tahun untuk Dropdown
   const availableYears = useMemo(() => {
@@ -164,21 +192,6 @@ const ManajemenKegiatan = () => {
     return `${start} - ${end}`;
   };
 
-  const getComputedStatus = (startDate, endDate) => {
-    if (!startDate || !endDate) return { label: 'Jadwal Belum Lengkap', className: 'bg-gray-100 text-gray-500' };
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start) return { label: 'Akan Datang', className: 'bg-blue-50 text-blue-700 border border-blue-100' };
-    if (now > end) return { label: 'Selesai', className: 'bg-gray-100 text-gray-600 border border-gray-200' };
-    return { label: 'Sedang Proses', className: 'bg-emerald-50 text-emerald-700 border border-emerald-100 animate-pulse' };
-  };
-
   if (loading) return (
     <div className="flex flex-col items-center justify-center min-h-[60vh]">
         <div className="w-10 h-10 border-4 border-blue-100 border-t-[#1A2A80] rounded-full animate-spin mb-4"></div>
@@ -196,10 +209,9 @@ const ManajemenKegiatan = () => {
   );
 
   return (
-    // Container utama disesuaikan dengan Layout (max-w-7xl) agar serasi dengan Header
     <div className="w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 space-y-6">
       
-      {/* 1. HEADER SECTION & FILTERS (Digabung dalam satu Card Putih) */}
+      {/* 1. HEADER SECTION & FILTERS */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 md:p-8">
         
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-6">
@@ -215,7 +227,6 @@ const ManajemenKegiatan = () => {
                 </p>
             </div>
             
-            {/* Stats Summary Kecil (Opsional - Pemanis) */}
             <div className="hidden md:flex gap-4">
                 <div className="px-4 py-2 bg-gray-50 rounded-lg border border-gray-100 text-center">
                     <span className="block text-xl font-bold text-[#1A2A80]">{kegiatan.length}</span>
@@ -229,6 +240,7 @@ const ManajemenKegiatan = () => {
 
         {/* Filter Controls */}
         <div className="flex flex-col md:flex-row gap-4">
+            {/* Search Input */}
             <div className="relative flex-grow">
                 <FaSearch className="absolute left-4 top-3.5 text-gray-400" />
                 <input
@@ -240,8 +252,9 @@ const ManajemenKegiatan = () => {
                 />
             </div>
             
-            <div className="relative min-w-[180px]">
-                <FaFilter className="absolute left-4 top-3.5 text-gray-400" />
+            {/* Filter Tahun */}
+            <div className="relative min-w-[150px]">
+                <FaCalendarAlt className="absolute left-4 top-3.5 text-gray-400" />
                 <select
                     className="w-full pl-11 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-[#1A2A80] outline-none transition-all text-sm text-gray-800 cursor-pointer appearance-none"
                     value={filterYear}
@@ -249,6 +262,22 @@ const ManajemenKegiatan = () => {
                 >
                     <option value="">Semua Tahun</option>
                     {availableYears.map(year => <option key={year} value={year}>{year}</option>)}
+                </select>
+                <FaChevronDown className="absolute right-4 top-4 text-gray-400 text-xs pointer-events-none" />
+            </div>
+
+            {/* 3. TAMBAHAN: Filter Status */}
+            <div className="relative min-w-[180px]">
+                <FaFilter className="absolute left-4 top-3.5 text-gray-400" />
+                <select
+                    className="w-full pl-11 pr-8 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-100 focus:border-[#1A2A80] outline-none transition-all text-sm text-gray-800 cursor-pointer appearance-none"
+                    value={filterStatus}
+                    onChange={(e) => setFilterStatus(e.target.value)}
+                >
+                    <option value="">Semua Status</option>
+                    <option value="Sedang Proses">Sedang Proses</option>
+                    <option value="Akan Datang">Akan Datang</option>
+                    <option value="Selesai">Selesai</option>
                 </select>
                 <FaChevronDown className="absolute right-4 top-4 text-gray-400 text-xs pointer-events-none" />
             </div>
@@ -267,7 +296,7 @@ const ManajemenKegiatan = () => {
             <FaSearch className="mx-auto text-4xl text-gray-200 mb-3" />
             <p className="text-gray-500 font-medium">Tidak ditemukan hasil untuk pencarian Anda.</p>
             <button 
-                onClick={() => {setSearchTerm(''); setFilterYear('')}} 
+                onClick={() => {setSearchTerm(''); setFilterYear(''); setFilterStatus('');}} 
                 className="mt-3 text-[#1A2A80] text-sm font-bold hover:underline"
             >
                 Reset Filter
@@ -381,7 +410,7 @@ const ManajemenKegiatan = () => {
                     ) : (
                       <div className="p-8 text-center bg-white rounded-xl border border-gray-200 border-dashed">
                         <p className="text-gray-400 italic text-sm">
-                            {filterYear ? `Tidak ada jadwal kegiatan di tahun ${filterYear}.` : 'Belum ada sub-kegiatan yang ditambahkan.'}
+                            {filterYear || filterStatus ? `Tidak ada jadwal kegiatan yang cocok dengan filter.` : 'Belum ada sub-kegiatan yang ditambahkan.'}
                         </p>
                       </div>
                     )}

@@ -3,7 +3,7 @@ import axios from 'axios';
 import Swal from 'sweetalert2';
 import { FaSave, FaTimes, FaInfoCircle } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ModalSPKSetting = ({ isOpen, onClose, periode, onSuccess }) => {
   const [formData, setFormData] = useState({

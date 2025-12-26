@@ -3,9 +3,17 @@ import React, { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import Swal from 'sweetalert2'; 
-import { FaDownload, FaFileUpload, FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
+import { 
+  FaDownload, 
+  FaFileUpload, 
+  FaPlus, 
+  FaEdit, 
+  FaTrash, 
+  FaChevronLeft, 
+  FaChevronRight 
+} from 'react-icons/fa';
 
-const API_URL = 'http://makinasik.web.bps.go.id/api';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id/api'; // Sesuaikan dengan env
 const getToken = () => localStorage.getItem('token');
 
 const ManageUsers = () => {
@@ -14,6 +22,11 @@ const ManageUsers = () => {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
     const [error, setError] = useState(null);
+    
+    // --- STATE PAGINATION ---
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
     const navigate = useNavigate();
     const fileInputRef = useRef(null);
 
@@ -27,7 +40,6 @@ const ManageUsers = () => {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
-            // Perbaikan Logika Data: Ambil dari response.data.data
             const fetchedData = response.data.data || response.data;
             
             if (Array.isArray(fetchedData)) {
@@ -35,6 +47,9 @@ const ManageUsers = () => {
             } else {
                 setUsers([]);
             }
+            
+            // Reset ke halaman 1 setiap kali fetch ulang (misal habis delete/import)
+            setCurrentPage(1);
             
         } catch (err) {
             console.error(err);
@@ -56,7 +71,6 @@ const ManageUsers = () => {
             text: "Data pengguna ini akan dihapus permanen!",
             icon: 'warning',
             showCancelButton: true,
-            // Style Asli (Tombol Hapus di Kanan)
             reverseButtons: true, 
             confirmButtonColor: '#d33', 
             cancelButtonColor: '#3085d6', 
@@ -83,38 +97,25 @@ const ManageUsers = () => {
     const handleDownloadTemplate = async () => {
         try {
             const token = getToken();
-            setLoading(true); // Opsional: Tampilkan loading jika perlu
-
             const response = await axios.get(`${API_URL}/users/template`, {
                 headers: { Authorization: `Bearer ${token}` },
-                responseType: 'blob', // <--- PENTING: Agar dibaca sebagai file binary
+                responseType: 'blob',
             });
 
-            // Membuat link virtual untuk men-trigger download
             const url = window.URL.createObjectURL(new Blob([response.data]));
             const link = document.createElement('a');
             link.href = url;
-            
-            // Nama file saat didownload user
             link.setAttribute('download', 'template_import_users.xlsx'); 
             
             document.body.appendChild(link);
             link.click();
             
-            // Bersihkan memori
             link.parentNode.removeChild(link);
             window.URL.revokeObjectURL(url);
-            
-            setLoading(false);
 
         } catch (err) {
             console.error(err);
-            setLoading(false);
-            Swal.fire(
-                'Gagal!', 
-                'Gagal mendownload template dari server. Pastikan file tersedia.', 
-                'error'
-            );
+            Swal.fire('Gagal!', 'Gagal mendownload template dari server.', 'error');
         }
     };
 
@@ -133,7 +134,6 @@ const ManageUsers = () => {
         setUploading(true);
         try {
             const token = getToken();
-            // Endpoint import yang baru ditambahkan
             const response = await axios.post(`${API_URL}/users/import`, formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -143,7 +143,6 @@ const ManageUsers = () => {
 
             const { successCount, failCount, errors } = response.data;
             
-            // Format Pesan Notifikasi
             let msgHTML = `<b>Sukses:</b> ${successCount}<br/><b>Gagal:</b> ${failCount}`;
             if (errors && errors.length > 0) {
                 msgHTML += `<br/><br/><div style="text-align:left; max-height:100px; overflow-y:auto; font-size:12px; background:#f9f9f9; padding:5px;">${errors.slice(0, 3).join('<br/>')}${errors.length > 3 ? '<br/>...' : ''}</div>`;
@@ -155,14 +154,14 @@ const ManageUsers = () => {
                 icon: failCount > 0 ? 'warning' : 'success'
             });
 
-            fetchUsers(); // Refresh tabel setelah import
+            fetchUsers(); 
 
         } catch (err) {
             console.error(err);
             Swal.fire('Error', err.response?.data?.message || "Gagal import user.", 'error');
         } finally {
             setUploading(false);
-            e.target.value = null; // Reset input file
+            e.target.value = null; 
         }
     };
 
@@ -178,12 +177,24 @@ const ManageUsers = () => {
         });
     };
 
+    // --- LOGIKA PAGINATION ---
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentUsers = users.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(users.length / itemsPerPage);
+
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setCurrentPage(newPage);
+        }
+    };
+
     if (loading) return <div className="text-center py-10 text-gray-500">Memuat data...</div>;
     if (error) return <div className="text-center py-10 text-red-600">Error: {error}</div>;
 
     return (
         <div className="w-full">
-            {/* Input File Tersembunyi (Support Excel & CSV) */}
+            {/* Input File Tersembunyi */}
             <input 
                 type="file" 
                 ref={fileInputRef} 
@@ -234,7 +245,7 @@ const ManageUsers = () => {
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                        {users.map((user) => (
+                        {currentUsers.map((user) => (
                             <tr 
                                 key={user.id} 
                                 onClick={() => navigate(`/admin/users/${user.id}/detail`)} 
@@ -276,8 +287,40 @@ const ManageUsers = () => {
                         ))}
                     </tbody>
                 </table>
-                {users.length === 0 && (
+                
+                {users.length === 0 ? (
                     <div className="p-10 text-center text-gray-400 italic">Belum ada data pengguna.</div>
+                ) : (
+                    /* --- PAGINATION FOOTER --- */
+                    users.length > itemsPerPage && (
+                        <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50">
+                            <div className="text-xs text-gray-500">
+                                Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, users.length)} dari <strong>{users.length}</strong> pengguna
+                            </div>
+                            
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => handlePageChange(currentPage - 1)}
+                                    disabled={currentPage === 1}
+                                    className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                                >
+                                    <FaChevronLeft size={12} />
+                                </button>
+                                
+                                <span className="text-xs font-bold text-gray-700 px-2">
+                                    Hal {currentPage} / {totalPages}
+                                </span>
+                                
+                                <button
+                                    onClick={() => handlePageChange(currentPage + 1)}
+                                    disabled={currentPage === totalPages}
+                                    className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                                >
+                                    <FaChevronRight size={12} />
+                                </button>
+                            </div>
+                        </div>
+                    )
                 )}
             </div>
         </div>

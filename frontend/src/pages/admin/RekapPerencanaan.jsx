@@ -3,7 +3,8 @@ import axios from 'axios';
 import Swal from 'sweetalert2';
 import { 
   FaChevronDown, 
-  FaChevronRight, 
+  FaChevronRight,
+  FaChevronLeft, 
   FaFilter, 
   FaCalendarAlt,
   FaUserTie,
@@ -15,7 +16,7 @@ import {
   FaCheckCircle
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 const getToken = () => localStorage.getItem('token');
 
 // Helper Formatter Rupiah
@@ -41,6 +42,10 @@ const RekapPerencanaan = () => {
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [expandedMitra, setExpandedMitra] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
+
+  // Pagination State untuk Mitra
+  const [mitraPage, setMitraPage] = useState(1);
+  const itemsPerPage = 10;
 
   // --- FETCH LEVEL 1 (BULAN) ---
   const fetchBulan = async () => {
@@ -91,6 +96,7 @@ const RekapPerencanaan = () => {
       return;
     }
     setExpandedMonth(monthNum);
+    setMitraPage(1); // Reset pagination ke halaman 1 saat ganti bulan
     await fetchMitra(monthNum); 
   };
 
@@ -285,12 +291,24 @@ const RekapPerencanaan = () => {
     );
   };
 
-  // LEVEL 2: TABEL MITRA
+  // LEVEL 2: TABEL MITRA (WITH PAGINATION)
   const renderMitraTable = (monthNum) => {
     const data = dataMitraCache[monthNum];
 
     if (!data) return <div className="p-6 text-center text-gray-400 text-sm animate-pulse">Memuat data mitra...</div>;
     if (data.length === 0) return <div className="p-6 text-center text-gray-400 text-sm italic border-t">Tidak ada mitra bertugas di bulan ini.</div>;
+
+    // --- LOGIKA PAGINATION ---
+    const indexOfLastItem = mitraPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentData = data.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(data.length / itemsPerPage);
+
+    const handlePageChange = (newPage) => {
+        if (newPage >= 1 && newPage <= totalPages) {
+            setMitraPage(newPage);
+        }
+    };
 
     return (
       <div className="bg-blue-50/30 p-3 md:p-5 border-t border-b border-gray-100 shadow-inner">
@@ -315,15 +333,18 @@ const RekapPerencanaan = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {data.map((m, idx) => {
+                {currentData.map((m, idx) => {
                    const isExpanded = expandedMitra === `${monthNum}-${m.id_mitra}`;
+                   // Nomor urut continue sesuai page
+                   const globalIdx = indexOfFirstItem + idx + 1; 
+                   
                    return (
                      <React.Fragment key={m.id_mitra}>
                        <tr 
                           onClick={(e) => handleExpandMitra(e, monthNum, m.id_mitra)}
                           className={`cursor-pointer transition-all duration-200 border-l-4 ${isExpanded ? 'bg-blue-50 border-l-[#1A2A80]' : 'hover:bg-gray-50 border-l-transparent'}`}
                        >
-                         <td className="px-5 py-3 text-center text-gray-400 font-mono text-xs">{idx + 1}</td>
+                         <td className="px-5 py-3 text-center text-gray-400 font-mono text-xs">{globalIdx}</td>
                          <td className="px-5 py-3 font-bold text-gray-700">{m.nama_lengkap}</td>
                          <td className="px-5 py-3 text-gray-500 font-mono text-xs">{m.nik}</td>
                          <td className="px-5 py-3 text-right font-bold text-gray-800">{formatRupiah(m.total_honor)}</td>
@@ -353,6 +374,34 @@ const RekapPerencanaan = () => {
               </tbody>
             </table>
          </div>
+
+         {/* --- PAGINATION FOOTER --- */}
+         {data.length > itemsPerPage && (
+            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 px-2">
+                <div className="text-xs text-gray-500">
+                    Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, data.length)} dari <strong>{data.length}</strong> mitra
+                </div>
+                <div className="flex items-center gap-2">
+                    <button
+                        onClick={() => handlePageChange(mitraPage - 1)}
+                        disabled={mitraPage === 1}
+                        className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                    >
+                        <FaChevronLeft size={12} />
+                    </button>
+                    <span className="text-xs font-bold text-gray-700 px-2">
+                        Hal {mitraPage} / {totalPages}
+                    </span>
+                    <button
+                        onClick={() => handlePageChange(mitraPage + 1)}
+                        disabled={mitraPage === totalPages}
+                        className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                    >
+                        <FaChevronRight size={12} />
+                    </button>
+                </div>
+            </div>
+         )}
       </div>
     );
   };

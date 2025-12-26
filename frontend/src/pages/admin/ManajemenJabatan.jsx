@@ -1,9 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import Swal from 'sweetalert2';
-import { FaTrash, FaPlus, FaTable, FaTag } from 'react-icons/fa';
+import { 
+  FaTrash, 
+  FaPlus, 
+  FaTable, 
+  FaTag, 
+  FaChevronLeft, 
+  FaChevronRight 
+} from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ManajemenJabatan = () => {
   const [jabatanList, setJabatanList] = useState([]);
@@ -14,6 +21,10 @@ const ManajemenJabatan = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // --- STATE PAGINATION ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
 
   const getAuthHeaders = () => {
     const token = localStorage.getItem('token');
@@ -33,6 +44,8 @@ const ManajemenJabatan = () => {
       } else {
         setJabatanList([]);
       }
+      // Reset ke halaman 1 saat data baru diambil
+      setCurrentPage(1);
       setLoading(false);
     } catch (err) {
       console.error("Gagal mengambil data:", err);
@@ -108,6 +121,18 @@ const ManajemenJabatan = () => {
     } catch (err) {
       const msg = err.response?.data?.message || "Gagal menghapus jabatan. Pastikan jabatan tidak sedang digunakan di Honorarium.";
       Swal.fire('Gagal', msg, 'error');
+    }
+  };
+
+  // --- LOGIKA PAGINATION ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = jabatanList.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(jabatanList.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
     }
   };
 
@@ -191,23 +216,25 @@ const ManajemenJabatan = () => {
                   <td colSpan="4" className="text-center py-10 text-gray-500 italic">Belum ada data jabatan yang terdaftar.</td>
                 </tr>
               ) : (
-                jabatanList.map((item, index) => (
+                currentData.map((item, index) => (
                   <tr key={item.kode_jabatan} className="hover:bg-blue-50/50 transition">
                     
-                    {/* Sel 1: No */}
-                    <td className="px-6 py-4 text-sm text-gray-600 align-top" style={{ width: '5%' }}>{index + 1}</td>
+                    {/* Sel 1: No (Disesuaikan dengan Pagination) */}
+                    <td className="px-6 py-4 text-sm text-gray-600 align-top" style={{ width: '5%' }}>
+                        {indexOfFirstItem + index + 1}
+                    </td>
                     
-                    {/* Sel 2: Kode Jabatan (Simetris) */}
+                    {/* Sel 2: Kode Jabatan */}
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-blue-700 font-mono align-top" style={{ width: '25%' }}>
                         {item.kode_jabatan}
                     </td>
                     
-                    {/* Sel 3: Nama Jabatan (Simetris) */}
+                    {/* Sel 3: Nama Jabatan */}
                     <td className="px-6 py-4 whitespace-normal text-sm text-gray-800 align-top" style={{ width: '45%' }}>
                         {item.nama_jabatan}
                     </td>
 
-                    {/* Sel 4: Aksi (Simetris) */}
+                    {/* Sel 4: Aksi */}
                     <td className="px-6 py-4 text-center align-top" style={{ width: '15%' }}>
                       <button
                         onClick={() => handleDelete(item.kode_jabatan)}
@@ -222,6 +249,37 @@ const ManajemenJabatan = () => {
             </tbody>
           </table>
         </div>
+
+        {/* --- PAGINATION FOOTER --- */}
+        {jabatanList.length > itemsPerPage && (
+            <div className="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50">
+               <div className="text-xs text-gray-500">
+                  Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, jabatanList.length)} dari <strong>{jabatanList.length}</strong> jabatan
+               </div>
+               
+               <div className="flex items-center gap-2">
+                  <button
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                  >
+                      <FaChevronLeft size={12} />
+                  </button>
+                  
+                  <span className="text-xs font-bold text-gray-700 px-2">
+                      Hal {currentPage} / {totalPages}
+                  </span>
+                  
+                  <button
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={currentPage === totalPages}
+                      className="p-2 rounded-lg bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition"
+                  >
+                      <FaChevronRight size={12} />
+                  </button>
+               </div>
+            </div>
+        )}
       </div>
     </div>
   );

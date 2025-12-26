@@ -6,11 +6,12 @@ import Swal from 'sweetalert2';
 import { 
   FaDownload, FaFileUpload, 
   FaTimes, FaPlus,
-  FaFileExcel, FaCheckCircle, FaCloudUploadAlt, FaChevronDown
+  FaFileExcel, FaCheckCircle, FaCloudUploadAlt, FaChevronDown,
+  FaChevronLeft, FaChevronRight 
 } from 'react-icons/fa';
 import PartTableMitra from '../../components/admin/PartTabelMitra';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
 
 const ManajemenMitra = () => {
   const [mitraList, setMitraList] = useState([]);
@@ -18,6 +19,10 @@ const ManajemenMitra = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   
+  // --- Pagination State ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
   
@@ -58,11 +63,28 @@ const ManajemenMitra = () => {
 
   useEffect(() => { fetchMitra(); }, []);
 
+  // Reset ke halaman 1 jika data berubah drastis atau pencarian (jika ada)
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [mitraList.length]);
+
   useEffect(() => {
     if (showYearDropdown && selectedYearRef.current) {
       selectedYearRef.current.scrollIntoView({ block: 'center' });
     }
   }, [showYearDropdown]);
+
+  // --- Logic Pagination ---
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentData = mitraList.slice(indexOfFirstItem, indexOfLastItem);
+  const totalPages = Math.ceil(mitraList.length / itemsPerPage);
+
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages) {
+        setCurrentPage(newPage);
+    }
+  };
 
   const handleOpenImport = () => {
     setImportFile(null);
@@ -257,12 +279,46 @@ const ManajemenMitra = () => {
       {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-100">{error}</div>}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        {/* Pass data yang sudah dipotong (currentData) bukan semua mitraList */}
         <PartTableMitra 
-            data={mitraList} 
+            data={currentData} 
             onEdit={(id) => navigate(`/admin/mitra/edit/${id}`)}
             onDelete={(id, year) => handleDelete(id, year)}
             onDetail={(id) => navigate(`/admin/mitra/${id}`)}
+            // Opsional: Jika PartTableMitra butuh info start index untuk penomoran
+            startIndex={indexOfFirstItem} 
         />
+
+        {/* --- SECTION PAGINATION --- */}
+        {mitraList.length > 0 && (
+          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="text-sm text-gray-600 font-medium">
+              Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, mitraList.length)} dari <span className="font-bold text-gray-800">{mitraList.length}</span> data
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handlePageChange(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <FaChevronLeft size={14} />
+              </button>
+
+              <span className="px-4 py-2 text-sm font-bold bg-white border border-gray-200 rounded-lg text-gray-700 shadow-sm">
+                Halaman {currentPage} / {totalPages}
+              </span>
+
+              <button
+                onClick={() => handlePageChange(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
+              >
+                <FaChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {showImportModal && (
