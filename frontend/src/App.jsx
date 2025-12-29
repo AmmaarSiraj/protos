@@ -28,6 +28,7 @@ import TransaksiMitra from './pages/admin/TransaksiMitra';
 import BatasHonor from './pages/admin/BatasHonor';
 import TambahTemplate from './pages/admin/TambahTemplate';
 import PreviewTemplate from './pages/admin/PreviewTemplate';
+import ManajemenSatuan from './pages/admin/ManajemenSatuan';
 
 import DetailKegiatanUser from './pages/DetailKegiatanUser';
 import PenugasanUser from './pages/Penugasan';
@@ -113,7 +114,8 @@ function AppRoutes() {
             <Route path="/admin/manage-kegiatan/detail/:id" element={<DetailKegiatan />} />
             <Route path="/admin/penugasan/preview" element={<TemplatePenugasan />} />
             <Route path="/admin/mitra/tambah" element={<AddMitra />} />
-
+            <Route path="/admin/manajemen-satuan" element={<ManajemenSatuan />} />
+            
             <Route path="/admin/penugasan" element={<Penugasan />} />
             <Route path="/admin/penugasan/tambah" element={<TambahPenugasan />} />
             <Route path="/admin/penugasan/detail/:id" element={<DetailPenugasan />} />

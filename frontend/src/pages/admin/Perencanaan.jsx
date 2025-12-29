@@ -24,7 +24,7 @@ import {
   FaExclamationTriangle
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 const getToken = () => localStorage.getItem('token');
 
 const Perencanaan = () => {

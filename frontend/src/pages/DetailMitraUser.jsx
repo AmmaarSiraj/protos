@@ -19,7 +19,7 @@ import {
 } from 'react-icons/fa';
 
 // Sesuaikan URL API
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 
 const DetailMitraUserNew = () => {
     const { id } = useParams();

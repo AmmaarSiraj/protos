@@ -45,7 +45,7 @@ const AddUser = () => {
 
       // 2. SERTAKAN HEADER AUTHORIZATION
       await axios.post(
-        'https://makinasik.web.bps.id/api/users', 
+        'https://makinasik.web.bps.go.id/api/users', 
         {
           username,
           email,

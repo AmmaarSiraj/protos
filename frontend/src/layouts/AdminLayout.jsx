@@ -135,7 +135,7 @@ const Sidebar = ({ handleLogout, onMenuClick, isCollapsed }) => {
         {!isCollapsed && (
           <div className="animate-fade-in">
             <h1 className="mt-4 text-2xl font-extrabold tracking-wider">MAKINASIK</h1>
-            <p className="text-xs font-medium text-blue-200 mt-1">Manajemen Administrasi Mitra</p>
+            <p className="text-xs font-medium text-blue-200 mt-1">Manajemen Kinerja dan Administrasi Mitra</p>
           </div>
         )}
       </div>

@@ -52,7 +52,7 @@ return [
     |
     */
 
-    'url' => env('APP_URL', 'https://makinasik.web.bps.id'),
+    'url' => env('APP_URL', 'https://makinasik.web.bps.go.id'),
 
     /*
     |--------------------------------------------------------------------------
