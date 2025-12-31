@@ -40,7 +40,7 @@ const EditUser = () => {
             try {
                 setLoading(true);
                 const response = await axios.get(
-                    `https://makinasik.web.bps.go.id/api/users/${id}`, 
+                    `https://makinasik.web.bps.go.id//api/users/${id}`, 
                     { headers: { 'Authorization': `Bearer ${token}` } }
                 );
 
@@ -89,7 +89,7 @@ const EditUser = () => {
 
         try {
             await axios.put(
-                `https://makinasik.web.bps.go.id/api/users/${id}`, 
+                `https://makinasik.web.bps.go.id//api/users/${id}`, 
                 updateData,
                 { headers: { 'Authorization': `Bearer ${token}` } }
             );

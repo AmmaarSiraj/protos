@@ -5,7 +5,7 @@ import { FaUser, FaEnvelope, FaLock } from 'react-icons/fa';
 import ReCAPTCHA from "react-google-recaptcha"; 
 import logoSikinerja from '../assets/logo.png'; 
 
-const API_BASE_URL = 'http://127.0.0.1:8000/api';
+const API_BASE_URL = 'https://makinasik.web.bps.go.id//api';
 const RECAPTCHA_SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY || "6LevnTEsAAAAAD4R4bwkbDN2hhaWK5W1UYcTdXei";
 
 const AuthPage = () => {

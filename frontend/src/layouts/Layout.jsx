@@ -5,7 +5,7 @@ import Footer from '../components/Footer';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id/';
 
 const Layout = () => {
   const location = useLocation();

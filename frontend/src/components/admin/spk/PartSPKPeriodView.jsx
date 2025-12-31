@@ -5,7 +5,7 @@ import { FaArrowLeft, FaPrint, FaEdit, FaUserTie, FaCalendarAlt, FaFileSignature
 import ModalSPKSetting from './ModalSPKSetting';
 import { useNavigate } from 'react-router-dom';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id/';
 
 const PartSPKPeriodView = ({ periode, onBack }) => {
   const [mitraList, setMitraList] = useState([]);
