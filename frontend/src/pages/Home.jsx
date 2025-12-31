@@ -90,7 +90,7 @@ const Home = () => {
     // Hapus leading slash jika ada untuk menghindari double slash
     const cleanPath = path.startsWith('/') ? path.substring(1) : path;
     
-    // Hasil: https://makinasik.web.bps.go.id//storage/uploads/system/foto.jpg
+    // Hasil: https://makinasik.web.bps.go.id/storage/uploads/system/foto.jpg
     return `${API_URL}/storage/${cleanPath}`;
   };
 
