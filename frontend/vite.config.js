@@ -17,12 +17,12 @@ export default defineConfig({
     host: '127.0.0.1',
     proxy: {
       '/api': {
-        target: 'https://makinasik.web.bps.go.id/', 
+        target: 'https://makinasik.sidome.id', 
         changeOrigin: true,
         secure: false,
       },
       '/storage': {
-         target: 'https://makinasik.web.bps.go.id/',
+         target: 'https://makinasik.sidome.id',
          changeOrigin: true,
       }
     },

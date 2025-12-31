@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FaTrash, FaPlus, FaCoins, FaTag } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id/';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
 
 const PartAddHonor = ({ honorList, onChange }) => {
   const [jabatanOptions, setJabatanOptions] = useState([]);

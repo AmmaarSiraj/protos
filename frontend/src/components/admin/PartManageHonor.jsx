@@ -4,7 +4,7 @@ import axios from 'axios';
 import { FaTrash, FaPlus, FaCoins, FaTag, FaSave } from 'react-icons/fa';
 import Swal from 'sweetalert2';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id/';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
 
 const PartManageHonor = ({ idSubKegiatan, initialData, onRefresh }) => {
   const [honorList, setHonorList] = useState([]);
