@@ -8,26 +8,45 @@ use Illuminate\Support\Facades\Validator;
 
 class HonorariumController extends Controller
 {
-    public function index()
+   public function index()
     {
-        $honor = Honorarium::with(['jabatan', 'subkegiatan', 'satuan'])
+        // Ambil data dengan relasi lengkap (Kegiatan -> Sub -> Honor)
+        $honor = Honorarium::with(['jabatan', 'subkegiatan.kegiatan', 'satuan'])
                             ->latest()
-                            ->get()
-                            ->map(function($item) {
-                                // Meratakan data untuk konsumsi frontend
-                                $item->nama_jabatan = $item->jabatan->nama_jabatan ?? 'Jabatan Tidak Dikenal';
-                                $item->nama_satuan = $item->satuan->nama_satuan ?? 'Satuan Tidak Dikenal';
-                                $item->satuan_alias = $item->satuan->alias; 
+                            ->get();
 
-                                // Hapus objek relasi bersarang untuk menghemat payload
-                                unset($item->jabatan);
-                                unset($item->subkegiatan); 
-                                unset($item->satuan);
-                                
-                                return $item;
-                            });
+        $mappedData = $honor->map(function($item) {
+            $sub = $item->subkegiatan;
+            $keg = $sub ? $sub->kegiatan : null;
+            $jab = $item->jabatan;
+            $sat = $item->satuan;
 
-        return response()->json(['status' => 'success', 'data' => $honor]);
+            // --- 1. FORMAT JABATAN: Nama (Kode) ---
+            $namaJab = $jab->nama_jabatan ?? 'Jabatan Tidak Dikenal';
+            $kodeJab = $item->kode_jabatan ?? '-';
+            $item->nama_jabatan = "$namaJab ($kodeJab)";
+
+            // --- 2. FORMAT SATUAN: Nama (Alias) ---
+            $namaSat = $sat->nama_satuan ?? 'Satuan Tidak Dikenal';
+            $aliasSat = $sat->alias ?? '-';
+            $item->nama_satuan = "$namaSat ($aliasSat)";
+
+            // Data Lainnya (Flatten ke root object)
+            $item->nama_sub_kegiatan = $sub->nama_sub_kegiatan ?? '-';
+            $item->tanggal_mulai     = $sub->tanggal_mulai ?? null;
+            $item->tanggal_selesai   = $sub->tanggal_selesai ?? null;
+            $item->nama_kegiatan     = $keg->nama_kegiatan ?? '-';
+            $item->deskripsi         = $sub->deskripsi ?? '';
+
+            // Bersihkan objek relasi agar respon API lebih ringan
+            unset($item->jabatan);
+            unset($item->subkegiatan); 
+            unset($item->satuan);
+            
+            return $item;
+        });
+
+        return response()->json(['status' => 'success', 'data' => $mappedData]);
     }
 
     public function store(Request $request)

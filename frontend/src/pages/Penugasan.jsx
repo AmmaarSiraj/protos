@@ -231,27 +231,130 @@ const Penugasan = () => {
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const rows = [
-      { 
-          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
-          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
-          "sobat_id": "3373xxx", 
-          "jabatan": "Petugas Pendataan Lapangan (PPL Survei)",
-          "volume": 1
-        },
-        { 
-          "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
-          "Kegiatan": "UPDATING/LISTING - TRIWULAN I", 
-          "sobat_id": "3373xxx", 
-          "jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
-          "volume": 1
+   const autoFitColumns = (jsonData, worksheet) => {
+    if (!jsonData || jsonData.length === 0) return;
+
+    const headers = Object.keys(jsonData[0]);
+    const objectMaxLength = [];
+
+    headers.forEach((key, i) => {
+      objectMaxLength[i] = key.length;
+    });
+
+    jsonData.forEach((row) => {
+      headers.forEach((key, i) => {
+        const value = row[key] ? row[key].toString() : "";
+        if (value.length > objectMaxLength[i]) {
+          objectMaxLength[i] = value.length;
         }
+      });
+    });
+
+    worksheet["!cols"] = objectMaxLength.map((w) => ({ wch: w + 5 }));
+  };
+
+  const handleDownloadTemplate = async () => {
+    const rows = [
+      {
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
+        "Kegiatan": "UPDATING/LISTING - TRIWULAN I",
+        "sobat_id": "3373xxx",
+        "jabatan": "Petugas Pendataan Lapangan (PPL Survei)",
+        "volume": 1
+      },
+      {
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
+        "Kegiatan": "UPDATING/LISTING - TRIWULAN I",
+        "sobat_id": "3373xxx",
+        "jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
+        "volume": 1
+      }
     ];
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
-    XLSX.writeFile(workbook, "template_import_penugasan.xlsx");
+
+    try {
+      Swal.fire({
+        title: 'Menyiapkan Template...',
+        text: 'Sedang mengambil data master kegiatan, jabatan, dan satuan.',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading()
+      });
+
+      const token = getToken();
+
+      const [resHonor, resJabatan, resSatuan] = await Promise.all([
+        axios.get(`${API_URL}/api/honorarium`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_URL}/api/jabatan`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_URL}/api/satuan-kegiatan`, { headers: { Authorization: `Bearer ${token}` } })
+      ]);
+
+      const honorData = resHonor.data.data || resHonor.data;
+      const jabatanData = resJabatan.data.data || resJabatan.data;
+      const satuanData = resSatuan.data.data || resSatuan.data;
+
+      // ... (Bagian mapping masterRows, jabatanRows, satuanRows tetap sama) ...
+      const masterRows = honorData.map(item => ({
+        "Survei/Sensus": item.nama_kegiatan || '-',
+        "Kegiatan": item.nama_sub_kegiatan || '-',
+        "Deskripsi": item.deskripsi || '',
+        "Tanggal Mulai": item.tanggal_mulai || '-',
+        "Tanggal Selesai": item.tanggal_selesai || '-',
+        "Jabatan": item.nama_jabatan || '-',
+        "Tarif": item.tarif || 0,
+        "Satuan": item.nama_satuan || '-',
+        "Basis Volume": item.basis_volume || 0,
+        "Beban Anggaran": item.beban_anggaran || '-'
+      }));
+
+      const jabatanRows = jabatanData
+        .map(jab => ({ "Nama Jabatan": jab.nama_jabatan, "Kode": jab.kode_jabatan }))
+        .sort((a, b) => a["Nama Jabatan"].localeCompare(b["Nama Jabatan"]));
+
+      const satuanRows = satuanData
+        .map(sat => ({ "Nama Satuan": sat.nama_satuan, "Alias": sat.alias || '-' }))
+        .sort((a, b) => a["Nama Satuan"].localeCompare(b["Nama Satuan"]));
+
+      // 4. Buat Workbook
+      const workbook = XLSX.utils.book_new();
+
+      // --- Sheet 1: Template Import ---
+      const wsTemplate = XLSX.utils.json_to_sheet(rows);
+      autoFitColumns(rows, wsTemplate);
+
+      // FITUR TAMBAHAN: AutoFilter (Panah Filter di Header)
+      // Kita set filter dari kolom A1 sampai kolom terakhir di baris 1 (Header)
+      // Ref "A1:E1" berarti filter aktif di 5 kolom pertama
+      if (wsTemplate['!ref']) {
+        wsTemplate['!autofilter'] = { ref: wsTemplate['!ref'] };
+      }
+
+      XLSX.utils.book_append_sheet(workbook, wsTemplate, "template_import_perencanaan");
+
+      // --- Sheet 2, 3, 4 (Master) ---
+      const wsMaster = XLSX.utils.json_to_sheet(masterRows);
+      autoFitColumns(masterRows, wsMaster);
+      // Tambahkan filter juga di master agar mudah dicari
+      if (wsMaster['!ref']) wsMaster['!autofilter'] = { ref: wsMaster['!ref'] };
+      XLSX.utils.book_append_sheet(workbook, wsMaster, "master_kegiatan");
+
+      const wsJabatan = XLSX.utils.json_to_sheet(jabatanRows);
+      autoFitColumns(jabatanRows, wsJabatan);
+      if (wsJabatan['!ref']) wsJabatan['!autofilter'] = { ref: wsJabatan['!ref'] };
+      XLSX.utils.book_append_sheet(workbook, wsJabatan, "master_jabatan_mitra");
+
+      const wsSatuan = XLSX.utils.json_to_sheet(satuanRows);
+      autoFitColumns(satuanRows, wsSatuan);
+      if (wsSatuan['!ref']) wsSatuan['!autofilter'] = { ref: wsSatuan['!ref'] };
+      XLSX.utils.book_append_sheet(workbook, wsSatuan, "master_satuan_honor");
+
+      // 5. Download
+      XLSX.writeFile(workbook, "template_import_penugasan.xlsx");
+
+      Swal.close();
+
+    } catch (error) {
+      console.error("Gagal download template:", error);
+      Swal.fire('Error', 'Gagal mengambil data master.', 'error');
+    }
   };
 
   // --- FILTER & SORT ---

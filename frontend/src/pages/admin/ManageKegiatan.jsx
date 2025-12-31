@@ -266,26 +266,101 @@ const ManageKegiatan = () => {
     }
   };
 
+  // --- LOGIKA DOWNLOAD TEMPLATE BARU ---
   const handleDownloadTemplate = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_URL}/api/subkegiatan/template`, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob', 
-      });
+    // 1. Data Sheet 1: Template Import (Contoh Pengisian)
+    // Menggunakan header User-Friendly seperti Penugasan/Perencanaan
+    const rows = [
+      { 
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+        "Kegiatan": "PENDATAAN - TRIWULAN I", 
+        "Deskripsi": "Kegiatan Pendataan Lapangan Sakernas",
+        "Tanggal Mulai": "01/01/2026",
+        "Tanggal Selesai": "28/02/2026",
+        "Jabatan": "Petugas Pendataan Lapangan (PPL Survei)", // Mengacu ke Master Jabatan
+        "Tarif": 55000,
+        "Satuan": "Dokumen", // Mengacu ke Master Satuan
+        "Basis Volume": 160,
+        "Beban Anggaran": "054.01.019021.521213"
+      },
+      { 
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+        "Kegiatan": "PENDATAAN - TRIWULAN I", 
+        "Deskripsi": "Kegiatan Pemeriksaan Lapangan Sakernas",
+        "Tanggal Mulai": "01/01/2026",
+        "Tanggal Selesai": "28/02/2026",
+        "Jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
+        "Tarif": 19000,
+        "Satuan": "Dokumen",
+        "Basis Volume": 160,
+        "Beban Anggaran": "054.01.019021.521213"
+      }
+    ];
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'template_import_kegiatan.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      
-      link.parentNode.removeChild(link);
-      window.URL.revokeObjectURL(url);
+    try {
+        Swal.fire({
+            title: 'Menyiapkan Template...',
+            text: 'Sedang mengambil data master jabatan dan satuan.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const token = localStorage.getItem('token');
+        
+        // 2. Ambil Data Referensi (Jabatan & Satuan)
+        const [resJabatan, resSatuan] = await Promise.all([
+            axios.get(`${API_URL}/api/jabatan`, { headers: { Authorization: `Bearer ${token}` } }),
+            axios.get(`${API_URL}/api/satuan-kegiatan`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+
+        const jabatanData = resJabatan.data.data || resJabatan.data;
+        const satuanData = resSatuan.data.data || resSatuan.data;
+
+        // 3a. Format Master Jabatan
+        const jabatanRows = jabatanData
+            .map(jab => ({ 
+                "Nama Jabatan": jab.nama_jabatan, 
+                "Kode": jab.kode_jabatan 
+            }))
+            .sort((a, b) => a["Nama Jabatan"].localeCompare(b["Nama Jabatan"]));
+
+        // 3b. Format Master Satuan
+        const satuanRows = satuanData
+            .map(sat => ({ 
+                "Nama Satuan": sat.nama_satuan, 
+                "Alias": sat.alias || '-' 
+            }))
+            .sort((a, b) => a["Nama Satuan"].localeCompare(b["Nama Satuan"]));
+
+        // 4. Buat Workbook
+        const workbook = XLSX.utils.book_new();
+
+        // --- Sheet 1: Template Import ---
+        const wsTemplate = XLSX.utils.json_to_sheet(rows);
+        autoFitColumns(rows, wsTemplate);
+        if (wsTemplate['!ref']) wsTemplate['!autofilter'] = { ref: wsTemplate['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsTemplate, "template_import_kegiatan");
+
+        // --- Sheet 2: Master Jabatan Mitra ---
+        const wsJabatan = XLSX.utils.json_to_sheet(jabatanRows);
+        autoFitColumns(jabatanRows, wsJabatan);
+        if (wsJabatan['!ref']) wsJabatan['!autofilter'] = { ref: wsJabatan['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsJabatan, "master_jabatan_mitra");
+
+        // --- Sheet 3: Master Satuan Honor ---
+        const wsSatuan = XLSX.utils.json_to_sheet(satuanRows);
+        autoFitColumns(satuanRows, wsSatuan);
+        if (wsSatuan['!ref']) wsSatuan['!autofilter'] = { ref: wsSatuan['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsSatuan, "master_satuan_honor");
+
+        // 5. Download File
+        XLSX.writeFile(workbook, "template_import_kegiatan.xlsx");
+        
+        Swal.close(); 
+
     } catch (err) {
-      console.error(err);
-      Swal.fire('Gagal', 'Gagal mengunduh template.', 'error');
+        console.error("Gagal download template:", err);
+        Swal.fire('Error', 'Gagal mengambil data master.', 'error');
     }
   };
 
