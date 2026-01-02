@@ -11,7 +11,7 @@ import {
 } from 'react-icons/fa';
 import PartTableMitra from '../../components/admin/PartTabelMitra';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 
 const ManajemenMitra = () => {
   const [mitraList, setMitraList] = useState([]);
@@ -31,13 +31,24 @@ const ManajemenMitra = () => {
   const [showYearDropdown, setShowYearDropdown] = useState(false);
   
   const selectedYearRef = useRef(null);
-
   const yearsRange = Array.from({ length: 101 }, (_, i) => currentYear - 50 + i);
-
   const [isDragging, setIsDragging] = useState(false);
-
   const fileInputRef = useRef(null); 
   const navigate = useNavigate(); 
+
+  // --- CEK ROLE USER ---
+  const [isAdmin, setIsAdmin] = useState(false);
+  useEffect(() => {
+    const userStr = localStorage.getItem('user');
+    if (userStr) {
+      try {
+        const user = JSON.parse(userStr);
+        setIsAdmin(user.role === 'admin');
+      } catch (e) {
+        setIsAdmin(false);
+      }
+    }
+  }, []);
 
   const fetchMitra = async () => {
     setLoading(true);
@@ -265,28 +276,46 @@ const ManajemenMitra = () => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <div className="text-gray-500 text-sm">Database seluruh mitra statistik.</div>
         <div className="flex flex-wrap gap-2 justify-end">
-          <button onClick={() => navigate('/admin/mitra/tambah')} className="flex items-center gap-2 px-4 py-2 bg-[#1A2A80] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition shadow-sm"><FaPlus /> Tambah Mitra</button>
           
-          <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-green-700 border border-green-200 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm"><FaFileExcel /> Template</button>
-          <button onClick={handleExport} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 transition shadow-sm"><FaDownload /> Export</button>
+          {/* HANYA ADMIN YANG BISA TAMBAH */}
+          {isAdmin && (
+            <button onClick={() => navigate('/admin/mitra/tambah')} className="flex items-center gap-2 px-4 py-2 bg-[#1A2A80] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition shadow-sm">
+              <FaPlus /> Tambah Mitra
+            </button>
+          )}
           
-          <button onClick={handleOpenImport} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm">
-            <FaFileUpload /> Import
+          {/* HANYA ADMIN YANG BISA DOWNLOAD TEMPLATE */}
+          {isAdmin && (
+            <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-green-700 border border-green-200 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
+              <FaFileExcel /> Template
+            </button>
+          )}
+
+          {/* EXPORT BISA UNTUK SEMUA (BIASANYA) */}
+          <button onClick={handleExport} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 transition shadow-sm">
+            <FaDownload /> Export
           </button>
+          
+          {/* HANYA ADMIN YANG BISA IMPORT */}
+          {isAdmin && (
+            <button onClick={handleOpenImport} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm">
+              <FaFileUpload /> Import
+            </button>
+          )}
         </div>
       </div>
       
       {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-100">{error}</div>}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Pass data yang sudah dipotong (currentData) bukan semua mitraList */}
+        {/* Pass props readOnly jika bukan admin */}
         <PartTableMitra 
             data={currentData} 
             onEdit={(id) => navigate(`/admin/mitra/edit/${id}`)}
             onDelete={(id, year) => handleDelete(id, year)}
             onDetail={(id) => navigate(`/admin/mitra/${id}`)}
-            // Opsional: Jika PartTableMitra butuh info start index untuk penomoran
             startIndex={indexOfFirstItem} 
+            readOnly={!isAdmin} 
         />
 
         {/* --- SECTION PAGINATION --- */}
@@ -321,8 +350,9 @@ const ManajemenMitra = () => {
         )}
       </div>
 
-      {showImportModal && (
+      {showImportModal && isAdmin && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up">
+            {/* Modal Content tetap sama ... */}
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><FaFileUpload className="text-green-600" /> Import Mitra Excel</h3>

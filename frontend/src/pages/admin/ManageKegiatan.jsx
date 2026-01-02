@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import Swal from 'sweetalert2';
+import * as XLSX from 'xlsx'; // Import library Excel
 import { 
   FaDownload, 
   FaFileUpload, 
@@ -18,7 +19,30 @@ import {
   FaSave 
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
+
+// Helper untuk AutoFit Lebar Kolom
+const autoFitColumns = (jsonData, worksheet) => {
+    if (!jsonData || jsonData.length === 0) return;
+
+    const headers = Object.keys(jsonData[0]);
+    const objectMaxLength = [];
+
+    headers.forEach((key, i) => {
+        objectMaxLength[i] = key.length;
+    });
+
+    jsonData.forEach((row) => {
+        headers.forEach((key, i) => {
+            const value = row[key] ? row[key].toString() : "";
+            if (value.length > objectMaxLength[i]) {
+                objectMaxLength[i] = value.length;
+            }
+        });
+    });
+
+    worksheet["!cols"] = objectMaxLength.map((w) => ({ wch: w + 5 }));
+};
 
 const ManageKegiatan = () => {
   const [kegiatan, setKegiatan] = useState([]);
@@ -108,6 +132,104 @@ const ManageKegiatan = () => {
   useEffect(() => {
     fetchKegiatan();
   }, []);
+
+  // --- LOGIKA DOWNLOAD TEMPLATE BARU ---
+  const handleDownloadTemplate = async () => {
+    // 1. Data Sheet 1: Template Import (Contoh Pengisian)
+    // Menggunakan header User-Friendly seperti Penugasan/Perencanaan
+    const rows = [
+      { 
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+        "Kegiatan": "PENDATAAN - TRIWULAN I", 
+        "Deskripsi": "Kegiatan Pendataan Lapangan Sakernas",
+        "Tanggal Mulai": "01/01/2026",
+        "Tanggal Selesai": "28/02/2026",
+        "Jabatan": "Petugas Pendataan Lapangan (PPL Survei)", // Mengacu ke Master Jabatan
+        "Tarif": 55000,
+        "Satuan": "Dokumen", // Mengacu ke Master Satuan
+        "Basis Volume": 160,
+        "Beban Anggaran": "054.01.019021.521213"
+      },
+      { 
+        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
+        "Kegiatan": "PENDATAAN - TRIWULAN I", 
+        "Deskripsi": "Kegiatan Pemeriksaan Lapangan Sakernas",
+        "Tanggal Mulai": "01/01/2026",
+        "Tanggal Selesai": "28/02/2026",
+        "Jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
+        "Tarif": 19000,
+        "Satuan": "Dokumen",
+        "Basis Volume": 160,
+        "Beban Anggaran": "054.01.019021.521213"
+      }
+    ];
+
+    try {
+        Swal.fire({
+            title: 'Menyiapkan Template...',
+            text: 'Sedang mengambil data master jabatan dan satuan.',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading()
+        });
+
+        const token = localStorage.getItem('token');
+        
+        // 2. Ambil Data Referensi (Jabatan & Satuan)
+        const [resJabatan, resSatuan] = await Promise.all([
+            axios.get(`${API_URL}/api/jabatan`, { headers: { Authorization: `Bearer ${token}` } }),
+            axios.get(`${API_URL}/api/satuan-kegiatan`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+
+        const jabatanData = resJabatan.data.data || resJabatan.data;
+        const satuanData = resSatuan.data.data || resSatuan.data;
+
+        // 3a. Format Master Jabatan
+        const jabatanRows = jabatanData
+            .map(jab => ({ 
+                "Nama Jabatan": jab.nama_jabatan, 
+                "Kode": jab.kode_jabatan 
+            }))
+            .sort((a, b) => a["Nama Jabatan"].localeCompare(b["Nama Jabatan"]));
+
+        // 3b. Format Master Satuan
+        const satuanRows = satuanData
+            .map(sat => ({ 
+                "Nama Satuan": sat.nama_satuan, 
+                "Alias": sat.alias || '-' 
+            }))
+            .sort((a, b) => a["Nama Satuan"].localeCompare(b["Nama Satuan"]));
+
+        // 4. Buat Workbook
+        const workbook = XLSX.utils.book_new();
+
+        // --- Sheet 1: Template Import ---
+        const wsTemplate = XLSX.utils.json_to_sheet(rows);
+        autoFitColumns(rows, wsTemplate);
+        if (wsTemplate['!ref']) wsTemplate['!autofilter'] = { ref: wsTemplate['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsTemplate, "template_import_kegiatan");
+
+        // --- Sheet 2: Master Jabatan Mitra ---
+        const wsJabatan = XLSX.utils.json_to_sheet(jabatanRows);
+        autoFitColumns(jabatanRows, wsJabatan);
+        if (wsJabatan['!ref']) wsJabatan['!autofilter'] = { ref: wsJabatan['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsJabatan, "master_jabatan_mitra");
+
+        // --- Sheet 3: Master Satuan Honor ---
+        const wsSatuan = XLSX.utils.json_to_sheet(satuanRows);
+        autoFitColumns(satuanRows, wsSatuan);
+        if (wsSatuan['!ref']) wsSatuan['!autofilter'] = { ref: wsSatuan['!ref'] };
+        XLSX.utils.book_append_sheet(workbook, wsSatuan, "master_satuan_honor");
+
+        // 5. Download File
+        XLSX.writeFile(workbook, "template_import_kegiatan.xlsx");
+        
+        Swal.close(); 
+
+    } catch (err) {
+        console.error("Gagal download template:", err);
+        Swal.fire('Error', 'Gagal mengambil data master.', 'error');
+    }
+  };
 
   const filteredKegiatan = useMemo(() => {
     return kegiatan.map(item => {
@@ -266,112 +388,12 @@ const ManageKegiatan = () => {
     }
   };
 
-  // --- LOGIKA DOWNLOAD TEMPLATE BARU ---
-  const handleDownloadTemplate = async () => {
-    // 1. Data Sheet 1: Template Import (Contoh Pengisian)
-    // Menggunakan header User-Friendly seperti Penugasan/Perencanaan
-    const rows = [
-      { 
-        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
-        "Kegiatan": "PENDATAAN - TRIWULAN I", 
-        "Deskripsi": "Kegiatan Pendataan Lapangan Sakernas",
-        "Tanggal Mulai": "01/01/2026",
-        "Tanggal Selesai": "28/02/2026",
-        "Jabatan": "Petugas Pendataan Lapangan (PPL Survei)", // Mengacu ke Master Jabatan
-        "Tarif": 55000,
-        "Satuan": "Dokumen", // Mengacu ke Master Satuan
-        "Basis Volume": 160,
-        "Beban Anggaran": "054.01.019021.521213"
-      },
-      { 
-        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026", 
-        "Kegiatan": "PENDATAAN - TRIWULAN I", 
-        "Deskripsi": "Kegiatan Pemeriksaan Lapangan Sakernas",
-        "Tanggal Mulai": "01/01/2026",
-        "Tanggal Selesai": "28/02/2026",
-        "Jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
-        "Tarif": 19000,
-        "Satuan": "Dokumen",
-        "Basis Volume": 160,
-        "Beban Anggaran": "054.01.019021.521213"
-      }
-    ];
-
-    try {
-        Swal.fire({
-            title: 'Menyiapkan Template...',
-            text: 'Sedang mengambil data master jabatan dan satuan.',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading()
-        });
-
-        const token = localStorage.getItem('token');
-        
-        // 2. Ambil Data Referensi (Jabatan & Satuan)
-        const [resJabatan, resSatuan] = await Promise.all([
-            axios.get(`${API_URL}/api/jabatan`, { headers: { Authorization: `Bearer ${token}` } }),
-            axios.get(`${API_URL}/api/satuan-kegiatan`, { headers: { Authorization: `Bearer ${token}` } })
-        ]);
-
-        const jabatanData = resJabatan.data.data || resJabatan.data;
-        const satuanData = resSatuan.data.data || resSatuan.data;
-
-        // 3a. Format Master Jabatan
-        const jabatanRows = jabatanData
-            .map(jab => ({ 
-                "Nama Jabatan": jab.nama_jabatan, 
-                "Kode": jab.kode_jabatan 
-            }))
-            .sort((a, b) => a["Nama Jabatan"].localeCompare(b["Nama Jabatan"]));
-
-        // 3b. Format Master Satuan
-        const satuanRows = satuanData
-            .map(sat => ({ 
-                "Nama Satuan": sat.nama_satuan, 
-                "Alias": sat.alias || '-' 
-            }))
-            .sort((a, b) => a["Nama Satuan"].localeCompare(b["Nama Satuan"]));
-
-        // 4. Buat Workbook
-        const workbook = XLSX.utils.book_new();
-
-        // --- Sheet 1: Template Import ---
-        const wsTemplate = XLSX.utils.json_to_sheet(rows);
-        autoFitColumns(rows, wsTemplate);
-        if (wsTemplate['!ref']) wsTemplate['!autofilter'] = { ref: wsTemplate['!ref'] };
-        XLSX.utils.book_append_sheet(workbook, wsTemplate, "template_import_kegiatan");
-
-        // --- Sheet 2: Master Jabatan Mitra ---
-        const wsJabatan = XLSX.utils.json_to_sheet(jabatanRows);
-        autoFitColumns(jabatanRows, wsJabatan);
-        if (wsJabatan['!ref']) wsJabatan['!autofilter'] = { ref: wsJabatan['!ref'] };
-        XLSX.utils.book_append_sheet(workbook, wsJabatan, "master_jabatan_mitra");
-
-        // --- Sheet 3: Master Satuan Honor ---
-        const wsSatuan = XLSX.utils.json_to_sheet(satuanRows);
-        autoFitColumns(satuanRows, wsSatuan);
-        if (wsSatuan['!ref']) wsSatuan['!autofilter'] = { ref: wsSatuan['!ref'] };
-        XLSX.utils.book_append_sheet(workbook, wsSatuan, "master_satuan_honor");
-
-        // 5. Download File
-        XLSX.writeFile(workbook, "template_import_kegiatan.xlsx");
-        
-        Swal.close(); 
-
-    } catch (err) {
-        console.error("Gagal download template:", err);
-        Swal.fire('Error', 'Gagal mengambil data master.', 'error');
-    }
-  };
-
   const handleImportClick = () => { fileInputRef.current.click(); };
 
- // Ganti fungsi handleFileChange yang lama dengan yang ini:
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // DEBUG 1: Cek File yang akan dikirim
     console.log("--- MULAI UPLOAD ---");
     console.log("File Info:", { name: file.name, type: file.type, size: file.size });
 
@@ -383,7 +405,7 @@ const ManageKegiatan = () => {
       const token = localStorage.getItem('token');
       const url = `${API_URL}/api/subkegiatan/import`;
       
-      console.log(`Mengirim POST ke: ${url}`); // Debug URL
+      console.log(`Mengirim POST ke: ${url}`); 
 
       const response = await axios.post(url, formData, {
         headers: { 
@@ -392,16 +414,13 @@ const ManageKegiatan = () => {
         }
       });
 
-      // DEBUG 2: Log Sukses dari Server
       console.log("Response Sukses:", response.data);
 
       const { successCount, failCount, errors } = response.data;
       
-      // Tampilkan pesan detail jika ada error baris di dalam file excel
       let message = `Sukses: ${successCount} data.`;
       if (failCount > 0) {
         message += ` Gagal: ${failCount} baris.`;
-        // Tampilkan detail error baris di console
         if (errors && errors.length > 0) {
              console.warn("DETAIL ERROR PER BARIS:", errors);
              message += " (Cek Console F12 untuk detail kegagalan)";
@@ -418,28 +437,21 @@ const ManageKegiatan = () => {
       fetchKegiatan(); 
 
     } catch (err) {
-      // DEBUG 3: Log Error Jaringan/Server
       console.error("--- ERROR IMPORT ---", err);
 
       let title = 'Gagal Import';
       let errorMessage = 'Terjadi kesalahan sistem.';
 
       if (err.response) {
-          // Server merespon dengan status code di luar 2xx (misal 404, 422, 500)
-          console.log("Status Code:", err.response.status);
-          console.log("Data Error dari Server:", err.response.data);
-
           if (err.response.status === 404) {
               errorMessage = "URL Import tidak ditemukan (404). Cek route backend.";
           } else if (err.response.status === 422) {
-              // Error Validasi (misal file bukan excel)
               title = 'Validasi Gagal';
               const errorData = err.response.data.errors || err.response.data.message;
               errorMessage = typeof errorData === 'object' 
                   ? JSON.stringify(errorData) 
                   : errorData;
           } else if (err.response.data && err.response.data.message) {
-              // Pesan error umum dari backend
               errorMessage = err.response.data.message;
           }
       } else if (err.request) {
@@ -465,8 +477,8 @@ const ManageKegiatan = () => {
       <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
         <div className="text-gray-500 text-sm">Kelola daftar Survei/Sensus.</div>
         <div className="flex gap-2">
-          <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 transition shadow-sm"><FaDownload /> Template</button>
-          <button onClick={handleImportClick} disabled={uploading} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm disabled:opacity-50"><FaFileUpload /> {uploading ? '...' : 'Import'}</button>
+          <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 transition shadow-sm"><FaDownload /> Template Excel</button>
+          <button onClick={handleImportClick} disabled={uploading} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm disabled:opacity-50"><FaFileUpload /> {uploading ? '...' : 'Import Kegiatan'}</button>
           <Link to="/admin/manage-kegiatan/tambah" className="flex items-center gap-2 bg-[#1A2A80] hover:bg-blue-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm"><FaPlus /> Tambah Baru</Link>
         </div>
       </div>

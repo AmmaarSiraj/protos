@@ -13,7 +13,7 @@ import {
   FaChevronRight 
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id/api'; // Sesuaikan dengan env
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id/api'; // Sesuaikan dengan env
 const getToken = () => localStorage.getItem('token');
 
 const ManageUsers = () => {

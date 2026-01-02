@@ -10,7 +10,7 @@ import {
   FaChevronRight 
 } from 'react-icons/fa'; // Menambahkan icon navigasi
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 
 const ManajemenSatuan = () => {
   const [satuanList, setSatuanList] = useState([]);

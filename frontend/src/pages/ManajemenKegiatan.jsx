@@ -13,7 +13,7 @@ import {
   FaChartLine
 } from 'react-icons/fa';
 
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 
 const ManajemenKegiatan = () => {
   const [kegiatan, setKegiatan] = useState([]);
@@ -57,23 +57,23 @@ const ManajemenKegiatan = () => {
   };
 
   // 1. FETCH DATA
-  const fetchKegiatan = async () => {
+ const fetchKegiatan = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token'); 
       const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 
-      const [resKeg, resSub] = await Promise.all([
-        axios.get(`${API_URL}/api/kegiatan`, config).catch(() => ({ data: [] })),
-        axios.get(`${API_URL}/api/subkegiatan`, config).catch(() => ({ data: [] }))
-      ]);
-
-      const allKegiatan = getList(resKeg);
-      const allSubs = getList(resSub);
+      // HANYA panggil endpoint kegiatan (karena subkegiatan sudah include di dalamnya)
+      // Hapus pemanggilan axios.get ke /api/subkegiatan
+      const response = await axios.get(`${API_URL}/api/kegiatan`, config);
+      
+      const allKegiatan = getList(response);
       
       // Mapping Data Induk ke Anak
       const mergedData = allKegiatan.map(k => {
-         const mySubs = allSubs.filter(sub => sub.id_kegiatan === k.id);
+         // PERBAIKAN DI SINI:
+         // Gunakan k.subkegiatan langsung (data dari backend), bukan filter dari array terpisah
+         const mySubs = k.subkegiatan || []; 
          
          const activeYears = new Set();
          mySubs.forEach(sub => {

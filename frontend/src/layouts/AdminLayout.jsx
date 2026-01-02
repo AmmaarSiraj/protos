@@ -5,7 +5,7 @@ import {
   FaHome, FaUsers, FaClipboardList, FaCalendarAlt, FaChartLine, FaTasks, 
   FaBriefcase, FaSlidersH, FaSignOutAlt, FaUserCircle, FaUserCheck, FaBars,
   FaFileContract, FaMoneyBillWave, FaCogs, FaRulerCombined,
-  FaChevronLeft, FaChevronRight // Icon Tambahan untuk Toggle
+  FaChevronLeft, FaChevronRight 
 } from 'react-icons/fa';
 
 import logoMAKINASIK from '../assets/logo.png'; 
@@ -55,7 +55,6 @@ const AdminHeader = ({ title, toggleSidebar, isProfileExpanded, setIsProfileExpa
       setWidgetWidth(contentWidth + (isMobile ? 40 : 90));
     }
 
-    // Penyesuaian lebar profil saat sidebar collapse/expand
     const sidebarWidth = isSidebarCollapsed ? 80 : 288;
     setExpandedWidth(isMobile ? width : width - sidebarWidth);
   };
@@ -70,10 +69,8 @@ const AdminHeader = ({ title, toggleSidebar, isProfileExpanded, setIsProfileExpa
     <header className="flex justify-between items-start pt-2 px-4 md:px-8 bg-transparent relative h-16 md:h-20 z-30 transition-all duration-300">
       
       <div className={`flex items-center gap-4 mt-1 md:mt-2 transition-all duration-500 ${isProfileExpanded ? 'opacity-0 -translate-x-4 pointer-events-none' : 'opacity-100 translate-x-0'}`}>
-        {/* Tombol Mobile */}
         <button onClick={toggleSidebar} className="md:hidden text-gray-600 hover:text-[#1A2A80] text-xl focus:outline-none"><FaBars /></button>
         
-        {/* Tombol Desktop Toggle Sidebar */}
         <button 
             onClick={toggleCollapse} 
             className="hidden md:flex items-center justify-center w-10 h-10 bg-white border border-gray-200 rounded-xl text-[#1A2A80] hover:bg-blue-50 transition-all shadow-sm"
@@ -105,7 +102,7 @@ const AdminHeader = ({ title, toggleSidebar, isProfileExpanded, setIsProfileExpa
                       <div className="text-right whitespace-nowrap hidden md:block">
                           <p className="text-sm font-bold text-gray-800 leading-tight block select-none">{userData.username}</p>
                           <span className="text-[10px] font-bold text-[#1A2A80] bg-blue-100 px-2 py-0.5 rounded-full select-none inline-block mt-1">
-                              {userData.role === 'admin' ? 'Administrator' : 'Mitra'}
+                              {userData.role === 'admin' ? 'Administrator' : 'User'}
                           </span>
                       </div>
                       <div className="bg-white p-1 rounded-full shadow-sm flex-shrink-0">
@@ -123,6 +120,38 @@ const AdminHeader = ({ title, toggleSidebar, isProfileExpanded, setIsProfileExpa
 const Sidebar = ({ handleLogout, onMenuClick, isCollapsed }) => {
   const location = useLocation();
   const isActive = (path) => location.pathname === path;
+
+  // --- LOGIKA FILTER MENU BERDASARKAN ROLE ---
+  const [role, setRole] = useState('user'); // Default user
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      try {
+        const parsedUser = JSON.parse(storedUser);
+        setRole(parsedUser.role);
+      } catch (e) {
+        console.error("Gagal membaca role user", e);
+      }
+    }
+  }, []);
+
+  // Daftar menu yang DILARANG untuk User biasa
+  const restrictedPaths = [
+    '/admin/manage-users',
+    '/admin/system-settings',
+    '/admin/batas-honor',
+    '/admin/manajemen-satuan',
+    '/admin/manajemen-jabatan'
+  ];
+
+  // Filter menu
+  const filteredMenu = menuItems.filter(item => {
+    if (role === 'admin') return true; // Admin lihat semua
+    // Jika user, sembunyikan path yang ada di restrictedPaths
+    return !restrictedPaths.includes(item.path);
+  });
+  // -------------------------------------------
 
   return (
     <aside className={`bg-[#1A2A80] text-white flex flex-col overflow-hidden relative z-20 h-full shadow-2xl md:shadow-none transition-all duration-500 ease-in-out ${isCollapsed ? 'w-20' : 'w-72'}`}>
@@ -143,7 +172,8 @@ const Sidebar = ({ handleLogout, onMenuClick, isCollapsed }) => {
       <nav className="flex-1 py-6 space-y-2 overflow-y-auto no-scrollbar relative z-10">
         {!isCollapsed && <p className="px-8 text-xs font-bold text-blue-200 uppercase mb-4 tracking-wider animate-fade-in">Menu Utama</p>}
         
-        {menuItems.map((item) => {
+        {/* Render Menu yang sudah difilter */}
+        {filteredMenu.map((item) => {
           const active = isActive(item.path);
           return (
             <Link

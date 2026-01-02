@@ -38,7 +38,7 @@ const PartDetailProfileAdmin = ({ user, onClose }) => {
             {user.username || 'Admin User'}
         </h2>
         <span className="bg-[#1A2A80] text-white px-4 py-1.5 md:px-6 md:py-2 rounded-full text-xs md:text-sm font-bold tracking-wide shadow-md mb-8 md:mb-12">
-            {user.role === 'admin' ? 'Administrator System' : 'Mitra Statistik'}
+            {user.role === 'admin' ? 'Administrator System' : 'User'}
         </span>
 
         {/* Grid Detail Informasi */}

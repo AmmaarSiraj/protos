@@ -16,7 +16,7 @@ const Register = () => {
   const [isLoading, setIsLoading] = useState(false);
   
   const navigate = useNavigate();
-  const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+  const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
   const SITE_KEY = import.meta.env.VITE_RECAPTCHA_SITE_KEY; // Ambil key
 
   const handleRegister = async (e) => {

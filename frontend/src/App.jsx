@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import AuthPage from './auth/AuthPage';
 import Home from './pages/Home';
 
+// --- Page Admin Import ---
 import AdminDashboard from './pages/admin/Dashboard';
 import ManageUsers from './pages/admin/ManageUsers';
 import AddUser from './pages/admin/AddUser';
@@ -29,7 +30,15 @@ import BatasHonor from './pages/admin/BatasHonor';
 import TambahTemplate from './pages/admin/TambahTemplate';
 import PreviewTemplate from './pages/admin/PreviewTemplate';
 import ManajemenSatuan from './pages/admin/ManajemenSatuan';
+import Perencanaan from './pages/admin/Perencanaan';
+import TambahPerencanaan from './pages/admin/TambahPerencanaan';
+import EditPerencanaan from './pages/admin/EditPerencanaan';
+import DetailPerencanaan from './pages/admin/DetailPerencanaan';
+import RekapPerencanaan from './pages/admin/RekapPerencanaan';
+import ManajemenSistem from './pages/admin/ManajemenSistem';
 
+// --- Page User Import ---
+// (Diimport tapi tidak digunakan dalam Route karena tampilan user dihilangkan)
 import DetailKegiatanUser from './pages/DetailKegiatanUser';
 import PenugasanUser from './pages/Penugasan';
 import MitraUser from './pages/Mitra';
@@ -43,25 +52,20 @@ import ManajemenSPKUser from './pages/ManajemenSPK';
 import CetakSPKUser from './pages/CetakSPKUser';
 import TambahTemplateSPKUser from './pages/TambahTemplateSPKUser';
 import PreviewTemplateSPKUser from './pages/PreviewTemplateSPKUser';
-
-import Layout from './layouts/Layout';
-import AdminLayout from './layouts/AdminLayout';
-
-import RequireAuth from './components/RequireAuth';
-import AutoLogout from './components/AutoLogout';
-import Perencanaan from './pages/admin/Perencanaan';
-import TambahPerencanaan from './pages/admin/TambahPerencanaan';
-import EditPerencanaan from './pages/admin/EditPerencanaan';
-import DetailPerencanaan from './pages/admin/DetailPerencanaan';
-import RekapPerencanaan from './pages/admin/RekapPerencanaan';
-import LengkapiProfile from './pages/LengkapiProfile';
-
 import PerencanaanUser from './pages/Perencanaan';
 import TambahPerencanaanUser from './pages/TambahPerencanaan';
 import EditPerencanaanUser from './pages/EditPerencanaan';
 import DetailPerencanaanUser from './pages/DetailPerencanaan';
 import RekapPerencanaanUser from './pages/RekapPerencanaan';
-import ManajemenSistem from './pages/admin/ManajemenSistem';
+import LengkapiProfile from './pages/LengkapiProfile';
+
+// --- Layouts ---
+// import Layout from './layouts/Layout'; // <-- Layout user dinonaktifkan
+import AdminLayout from './layouts/AdminLayout'; // <-- Gunakan ini untuk User & Admin
+
+// --- Components ---
+import RequireAuth from './components/RequireAuth';
+import AutoLogout from './components/AutoLogout';
 
 function AppRoutes() {
   return (
@@ -71,37 +75,14 @@ function AppRoutes() {
         <Route path="/" element={<AuthPage />} />
         <Route path="/register" element={<Navigate to="/" replace />} />
 
-        <Route element={<RequireAuth allowedRoles={['user', 'admin']} />}>
-          <Route element={<Layout />}>
-            <Route path="/home" element={<Home />} />
-            <Route path="/lengkapi-profil" element={<LengkapiProfile />} />
-            <Route path="/kegiatan/:id" element={<DetailKegiatanUser />} />
-            <Route path="/penugasan" element={<PenugasanUser />} />
-            <Route path="/penugasan/detail/:id" element={<DetailPenugasanUser />} />
-            <Route path="/daftar-mitra" element={<MitraUser />} />
-            <Route path="/transaksi-mitra" element={<TransaksiMitraUser />} />
-            <Route path="/transaksi-mitra/:id" element={<DetailMitraUser />} />
-            <Route path="/penugasan/tambah" element={<TambahPenugasanUser />} />
-            <Route path="/penugasan/:id" element={<DetailPenugasanUser />} />
-            <Route path="/penugasan/edit/:id" element={<EditPenugasanUser />} />
-            <Route path="/daftar-kegiatan" element={<ManajemenKegiatan />} />
-            <Route path="/spk" element={<ManajemenSPKUser />} />
-            <Route path="/spk/templates/create" element={<TambahTemplateSPKUser />} />
-            <Route path="/spk/templates/edit/:id" element={<TambahTemplateSPKUser />} />
-            <Route path="/perencanaan" element={<PerencanaanUser />} />
-            <Route path="/perencanaan/tambah" element={<TambahPerencanaanUser />} />
-            <Route path="/perencanaan/detail/:id" element={<DetailPerencanaanUser />} />
-            <Route path="/perencanaan/edit/:id" element={<EditPerencanaanUser />} />
-            <Route path="/rekap" element={<RekapPerencanaanUser />} />
-          </Route>
-          <Route path="/spk/print/:periode/:id_mitra" element={<CetakSPKUser />} />
-          <Route path="/spk/templates/preview" element={<PreviewTemplateSPKUser />} />
-        </Route>
 
-        <Route element={<RequireAuth allowedRoles={['admin']} />}>
+        <Route element={<RequireAuth allowedRoles={['admin', 'user']} />}>
+          
+          {/* Halaman Print/Preview (Standalone) */}
           <Route path="/admin/spk/print/:periode/:id_mitra" element={<CetakSPK />} />
           <Route path="/admin/spk/templates/preview" element={<PreviewTemplate />} />
 
+          {/* Halaman dengan AdminLayout */}
           <Route element={<AdminLayout />}>
             <Route path="/admin/dashboard" element={<AdminDashboard />} />
             <Route path="/admin/manage-users" element={<ManageUsers />} />

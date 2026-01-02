@@ -4,7 +4,7 @@ import Swal from 'sweetalert2';
 import { FaTrash, FaPlus, FaTable, FaLayerGroup } from 'react-icons/fa';
 
 // Pastikan API_URL sesuai konfigurasi Anda
-const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.sidome.id';
+const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 
 const SatuanHonorarium = () => {
   const [satuanList, setSatuanList] = useState([]);
