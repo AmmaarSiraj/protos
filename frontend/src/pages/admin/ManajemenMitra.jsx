@@ -6,8 +6,7 @@ import Swal from 'sweetalert2';
 import { 
   FaDownload, FaFileUpload, 
   FaTimes, FaPlus,
-  FaFileExcel, FaCheckCircle, FaCloudUploadAlt, FaChevronDown,
-  FaChevronLeft, FaChevronRight 
+  FaFileExcel, FaCheckCircle, FaCloudUploadAlt, FaChevronDown
 } from 'react-icons/fa';
 import PartTableMitra from '../../components/admin/PartTabelMitra';
 
@@ -19,9 +18,9 @@ const ManajemenMitra = () => {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   
-  // --- Pagination State ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  // --- HAPUS STATE PAGINATION DI SINI ---
+  // const [currentPage, setCurrentPage] = useState(1);  <-- HAPUS
+  // const itemsPerPage = 10;                            <-- HAPUS
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [importFile, setImportFile] = useState(null);
@@ -74,10 +73,8 @@ const ManajemenMitra = () => {
 
   useEffect(() => { fetchMitra(); }, []);
 
-  // Reset ke halaman 1 jika data berubah drastis atau pencarian (jika ada)
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [mitraList.length]);
+  // --- HAPUS EFFECT RESET PAGE ---
+  // useEffect(() => { setCurrentPage(1); }, [mitraList.length]); <-- HAPUS
 
   useEffect(() => {
     if (showYearDropdown && selectedYearRef.current) {
@@ -85,17 +82,13 @@ const ManajemenMitra = () => {
     }
   }, [showYearDropdown]);
 
-  // --- Logic Pagination ---
-  const indexOfLastItem = currentPage * itemsPerPage;
-  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-  const currentData = mitraList.slice(indexOfFirstItem, indexOfLastItem);
-  const totalPages = Math.ceil(mitraList.length / itemsPerPage);
+  // --- HAPUS LOGICA SLICING DATA ---
+  // const indexOfLastItem = currentPage * itemsPerPage;
+  // const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  // const currentData = mitraList.slice(indexOfFirstItem, indexOfLastItem); <-- HAPUS
+  // const totalPages = Math.ceil(mitraList.length / itemsPerPage);
 
-  const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-        setCurrentPage(newPage);
-    }
-  };
+  // const handlePageChange = ... <-- HAPUS
 
   const handleOpenImport = () => {
     setImportFile(null);
@@ -277,26 +270,22 @@ const ManajemenMitra = () => {
         <div className="text-gray-500 text-sm">Database seluruh mitra statistik.</div>
         <div className="flex flex-wrap gap-2 justify-end">
           
-          {/* HANYA ADMIN YANG BISA TAMBAH */}
           {isAdmin && (
             <button onClick={() => navigate('/admin/mitra/tambah')} className="flex items-center gap-2 px-4 py-2 bg-[#1A2A80] text-white rounded-lg text-sm font-bold hover:bg-blue-900 transition shadow-sm">
               <FaPlus /> Tambah Mitra
             </button>
           )}
           
-          {/* HANYA ADMIN YANG BISA DOWNLOAD TEMPLATE */}
           {isAdmin && (
             <button onClick={handleDownloadTemplate} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-green-700 border border-green-200 px-4 py-2 rounded-lg text-sm font-medium transition shadow-sm">
               <FaFileExcel /> Template
             </button>
           )}
 
-          {/* EXPORT BISA UNTUK SEMUA (BIASANYA) */}
           <button onClick={handleExport} className="flex items-center gap-2 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 transition shadow-sm">
             <FaDownload /> Export
           </button>
           
-          {/* HANYA ADMIN YANG BISA IMPORT */}
           {isAdmin && (
             <button onClick={handleOpenImport} className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition shadow-sm">
               <FaFileUpload /> Import
@@ -308,51 +297,20 @@ const ManajemenMitra = () => {
       {error && <div className="bg-red-50 text-red-600 p-4 rounded-lg mb-6 border border-red-100">{error}</div>}
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Pass props readOnly jika bukan admin */}
+        {/* Pass props FULL DATA (mitraList), jangan dicut/slice di sini */}
         <PartTableMitra 
-            data={currentData} 
+            data={mitraList} 
             onEdit={(id) => navigate(`/admin/mitra/edit/${id}`)}
             onDelete={(id, year) => handleDelete(id, year)}
             onDetail={(id) => navigate(`/admin/mitra/${id}`)}
-            startIndex={indexOfFirstItem} 
             readOnly={!isAdmin} 
         />
-
-        {/* --- SECTION PAGINATION --- */}
-        {mitraList.length > 0 && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div className="text-sm text-gray-600 font-medium">
-              Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, mitraList.length)} dari <span className="font-bold text-gray-800">{mitraList.length}</span> data
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => handlePageChange(currentPage - 1)}
-                disabled={currentPage === 1}
-                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                <FaChevronLeft size={14} />
-              </button>
-
-              <span className="px-4 py-2 text-sm font-bold bg-white border border-gray-200 rounded-lg text-gray-700 shadow-sm">
-                Halaman {currentPage} / {totalPages}
-              </span>
-
-              <button
-                onClick={() => handlePageChange(currentPage + 1)}
-                disabled={currentPage === totalPages}
-                className="p-2 rounded-lg border border-gray-300 bg-white text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
-              >
-                <FaChevronRight size={14} />
-              </button>
-            </div>
-          </div>
-        )}
+        
+        {/* SECTION PAGINATION DI BAWAH INI SUDAH DIHAPUS, KARENA SUDAH ADA DI DALAM PartTableMitra */}
       </div>
 
       {showImportModal && isAdmin && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in-up">
-            {/* Modal Content tetap sama ... */}
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-200">
                 <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
                     <h3 className="font-bold text-gray-800 text-lg flex items-center gap-2"><FaFileUpload className="text-green-600" /> Import Mitra Excel</h3>
