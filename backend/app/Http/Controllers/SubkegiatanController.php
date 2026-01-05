@@ -207,6 +207,8 @@ class SubkegiatanController extends Controller
 
             for ($i = $headerIndex + 1; $i < count($rows); $i++) {
                 $row = $rows[$i];
+                if (!is_array($row)) continue;
+
                 $rowNumber = $i + 1;
 
                 $namaKegiatan = $this->getValue($row, $colMap['kegiatan']);
@@ -215,6 +217,10 @@ class SubkegiatanController extends Controller
                 if (empty($namaKegiatan) || empty($namaSub)) continue;
 
                 try {
+                    // Panggil fungsi formatDate yang baru (menggunakan checkdate)
+                    $tglMulaiFormatted = $this->formatDate($this->getValue($row, $colMap['tgl_mulai']));
+                    $tglSelesaiFormatted = $this->formatDate($this->getValue($row, $colMap['tgl_selesai']));
+
                     $kegiatan = Kegiatan::firstOrCreate(
                         ['nama_kegiatan' => $namaKegiatan],
                         ['deskripsi' => 'Imported via Excel']
@@ -230,16 +236,16 @@ class SubkegiatanController extends Controller
                         $subId = $existingSub->id;
                         $existingSub->update([
                              'deskripsi' => $this->getValue($row, $colMap['deskripsi']),
-                             'tanggal_mulai' => $this->formatDate($this->getValue($row, $colMap['tgl_mulai'])),
-                             'tanggal_selesai' => $this->formatDate($this->getValue($row, $colMap['tgl_selesai'])),
+                             'tanggal_mulai' => $tglMulaiFormatted,
+                             'tanggal_selesai' => $tglSelesaiFormatted,
                         ]);
                     } else {
                         Subkegiatan::create([
                             'id_kegiatan'       => $kegiatan->id,
                             'nama_sub_kegiatan' => $namaSub,
                             'deskripsi'         => $this->getValue($row, $colMap['deskripsi']),
-                            'tanggal_mulai'     => $this->formatDate($this->getValue($row, $colMap['tgl_mulai'])),
-                            'tanggal_selesai'   => $this->formatDate($this->getValue($row, $colMap['tgl_selesai'])),
+                            'tanggal_mulai'     => $tglMulaiFormatted,
+                            'tanggal_selesai'   => $tglSelesaiFormatted,
                             'status'            => 'aktif'
                         ]);
 
@@ -251,7 +257,7 @@ class SubkegiatanController extends Controller
                         if ($newSub) {
                             $subId = $newSub->id;
                         } else {
-                            throw new \Exception("Gagal mengambil ID Subkegiatan (Trigger DB Error).");
+                            throw new \Exception("Gagal mengambil ID Subkegiatan (Database Error).");
                         }
                     }
 
@@ -321,14 +327,40 @@ class SubkegiatanController extends Controller
 
     private function formatDate($date) {
         if (empty($date)) return null;
-        try {
-            if (is_numeric($date)) {
-                return Date::excelToDateTimeObject($date)->format('Y-m-d');
-            }
-            return Carbon::parse($date)->format('Y-m-d');
-        } catch (\Exception $e) {
-            return null;
+
+        // Bersihkan whitespace atau karakter aneh
+        $date = trim($date);
+
+        // 1. Cek jika format sudah Y-m-d (Database Format)
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+             return $date;
         }
+
+        // 2. Cek Numeric (Excel Serial Number)
+        if (is_numeric($date)) {
+            try {
+                return Date::excelToDateTimeObject($date)->format('Y-m-d');
+            } catch (\Exception $e) {
+                 // Abaikan, lanjut ke string parsing
+            }
+        }
+
+        // 3. Validasi Manual dengan checkdate untuk format dd/mm/yyyy atau dd-mm-yyyy
+        // Regex ini menangkap (hari)/(bulan)/(tahun)
+        if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $date, $matches)) {
+            $day   = (int)$matches[1];
+            $month = (int)$matches[2];
+            $year  = (int)$matches[3];
+
+            // checkdate(bulan, hari, tahun) mengembalikan TRUE jika valid
+            if (checkdate($month, $day, $year)) {
+                // Return dalam format Y-m-d untuk database
+                return sprintf('%04d-%02d-%02d', $year, $month, $day);
+            }
+        }
+
+        // Jika semua gagal, lempar pesan error yang jelas berisi data asli
+        throw new \Exception("Format tanggal salah ('$date'). Gunakan format dd/mm/yyyy.");
     }
     
     private function findHeaderIndex($header, $searchTerms)

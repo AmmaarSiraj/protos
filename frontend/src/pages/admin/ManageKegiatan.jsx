@@ -418,19 +418,31 @@ const ManageKegiatan = () => {
 
       const { successCount, failCount, errors } = response.data;
       
-      let message = `Sukses: ${successCount} data.`;
+      // Update: Menggunakan HTML untuk menampilkan detail error jika ada
+      let htmlMessage = `<p>Sukses: <b>${successCount}</b> data.</p>`;
+      let iconType = 'success';
+
       if (failCount > 0) {
-        message += ` Gagal: ${failCount} baris.`;
+        iconType = 'warning';
+        htmlMessage += `<p style="color:red; margin-top:5px;">Gagal: <b>${failCount}</b> baris.</p>`;
+        
         if (errors && errors.length > 0) {
-             console.warn("DETAIL ERROR PER BARIS:", errors);
-             message += " (Cek Console F12 untuk detail kegagalan)";
+             const errorList = errors.map(err => `<li>${err}</li>`).join('');
+             htmlMessage += `
+                <div style="margin-top:10px; text-align:left;">
+                    <strong style="font-size:12px; color:#555;">Detail Error:</strong>
+                    <ul style="max-height:150px; overflow-y:auto; font-size:11px; color:#dc2626; padding-left:15px; margin-top:5px; border:1px solid #fee2e2; background-color:#fef2f2; border-radius:4px; padding:8px;">
+                        ${errorList}
+                    </ul>
+                </div>
+             `;
         }
       }
 
       Swal.fire({
           title: 'Import Selesai',
-          text: message,
-          icon: failCount > 0 ? 'warning' : 'success'
+          html: htmlMessage, // Menggunakan properti html
+          icon: iconType
       });
       
       setExpandedRow(null);
