@@ -176,5 +176,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::put('/template-pasal/{id}', [TemplatePasalController::class, 'update']);
     Route::delete('/template-pasal/{id}', [TemplatePasalController::class, 'destroy']);
 
+    Route::get('/transaksi/filters', [TransaksiController::class, 'getApprovedFilters']);
     Route::get('/transaksi', [TransaksiController::class, 'index']);
 });

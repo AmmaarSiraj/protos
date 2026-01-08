@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import Swal from 'sweetalert2';
 import { 
@@ -19,7 +19,6 @@ import {
 const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
 const getToken = () => localStorage.getItem('token');
 
-// Helper Formatter Rupiah
 const formatRupiah = (number) => {
   return new Intl.NumberFormat('id-ID', {
     style: 'currency',
@@ -29,25 +28,31 @@ const formatRupiah = (number) => {
 };
 
 const RekapPerencanaan = () => {
-  // --- STATE ---
   const [year, setYear] = useState(new Date().getFullYear());
   const [limit, setLimit] = useState(0); 
-
-  // Data Levels
   const [dataBulan, setDataBulan] = useState([]);
   const [dataMitraCache, setDataMitraCache] = useState({});
   const [dataDetailCache, setDataDetailCache] = useState({});
-
-  // Expand States
   const [expandedMonth, setExpandedMonth] = useState(null);
   const [expandedMitra, setExpandedMitra] = useState(null); 
   const [isLoading, setIsLoading] = useState(false);
-
-  // Pagination State untuk Mitra
   const [mitraPage, setMitraPage] = useState(1);
   const itemsPerPage = 10;
+  
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [filterStatus, setFilterStatus] = useState('all');
+  const filterRef = useRef(null);
 
-  // --- FETCH LEVEL 1 (BULAN) ---
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterRef.current && !filterRef.current.contains(event.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const fetchBulan = async () => {
     setIsLoading(true);
     try {
@@ -76,7 +81,6 @@ const RekapPerencanaan = () => {
     setDataDetailCache({});
   }, [year]); 
 
-  // --- FETCH LEVEL 2 (MITRA) ---
   const fetchMitra = async (monthNum) => {
     try {
         const token = getToken();
@@ -96,11 +100,10 @@ const RekapPerencanaan = () => {
       return;
     }
     setExpandedMonth(monthNum);
-    setMitraPage(1); // Reset pagination ke halaman 1 saat ganti bulan
+    setMitraPage(1); 
     await fetchMitra(monthNum); 
   };
 
-  // --- FETCH LEVEL 3 (DETAIL) ---
   const fetchDetail = async (monthNum, mitraId) => {
       try {
         const token = getToken();
@@ -116,7 +119,7 @@ const RekapPerencanaan = () => {
   };
 
   const handleExpandMitra = async (e, monthNum, mitraId) => {
-    e.stopPropagation(); // Mencegah event bubbling ke parent row
+    e.stopPropagation(); 
     const key = `${monthNum}-${mitraId}`;
     if (expandedMitra === key) {
       setExpandedMitra(null);
@@ -126,7 +129,6 @@ const RekapPerencanaan = () => {
     await fetchDetail(monthNum, mitraId);
   };
 
-  // --- ACTION HANDLERS ---
   const handleVolumeChange = (monthNum, mitraId, index, newVal) => {
     const key = `${monthNum}-${mitraId}`;
     const currentData = [...(dataDetailCache[key] || [])];
@@ -207,9 +209,6 @@ const RekapPerencanaan = () => {
       }
   };
 
-  // --- RENDERERS ---
-
-  // LEVEL 3: TABEL RINCIAN KEGIATAN
   const renderDetailTable = (monthNum, mitraId) => {
     const key = `${monthNum}-${mitraId}`;
     const data = dataDetailCache[key];
@@ -224,7 +223,6 @@ const RekapPerencanaan = () => {
             <h5 className="text-xs font-bold text-gray-600 uppercase tracking-wide">Rincian Penugasan & Edit</h5>
         </div>
         
-        {/* RESPONSIVE TABLE CONTAINER */}
         <div className="overflow-x-auto rounded-lg shadow-sm border border-gray-200 bg-white">
           <table className="w-full text-xs text-left min-w-[700px]">
             <thead className="bg-gray-100 text-gray-600 font-semibold border-b border-gray-200">
@@ -239,51 +237,55 @@ const RekapPerencanaan = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {data.map((item, idx) => (
-                <tr key={item.id_kelompok || idx} className="hover:bg-blue-50/40 transition-colors">
-                  <td className="px-4 py-3 font-medium text-gray-700">{item.nama_kegiatan}</td>
-                  <td className="px-4 py-3 text-gray-600">{item.nama_sub_kegiatan}</td>
-                  <td className="px-4 py-3">
-                    <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded border border-blue-100 font-medium">
-                        {item.nama_jabatan}
-                    </span>
-                  </td>
-                  
-                  {/* EDITABLE VOLUME */}
-                  <td className="px-4 py-3 text-center">
-                    <input 
-                        type="number"
-                        min="1"
-                        className="w-16 p-1.5 text-center border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all font-bold text-gray-700"
-                        value={item.volume_tugas}
-                        onChange={(e) => handleVolumeChange(monthNum, mitraId, idx, parseInt(e.target.value) || 0)}
-                    />
-                  </td>
-                  
-                  <td className="px-4 py-3 text-right text-gray-500">{formatRupiah(item.tarif)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-[#1A2A80]">{formatRupiah(item.total_item)}</td>
-                  
-                  {/* ACTIONS */}
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex items-center justify-center gap-2">
-                        <button 
-                            onClick={() => handleSaveDetail(monthNum, mitraId, item)}
-                            className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all shadow-sm"
-                            title="Simpan Perubahan"
-                        >
-                            <FaSave />
-                        </button>
-                        <button 
-                            onClick={() => handleDeleteDetail(monthNum, mitraId, item.id_kelompok)}
-                            className="p-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-600 hover:text-white transition-all shadow-sm"
-                            title="Hapus Tugas"
-                        >
-                            <FaTrash />
-                        </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                {data.map((item, index) => (
+                    <tr key={item.id_kelompok} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 align-top">
+                            <div className="font-bold text-gray-700">{item.kegiatan}</div>
+                            <div className="text-[10px] text-gray-400 mt-1">{item.kode_kegiatan}</div>
+                        </td>
+                        <td className="px-4 py-3 align-top text-gray-600">
+                            {item.sub_kegiatan}
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                            <span className="bg-blue-50 text-[#1A2A80] px-2 py-1 rounded text-[10px] font-bold border border-blue-100">
+                                {item.jabatan}
+                            </span>
+                        </td>
+                        <td className="px-4 py-3 align-top">
+                             <input 
+                                type="number" 
+                                min="1"
+                                className="w-full text-center border border-gray-300 rounded px-2 py-1.5 focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none transition-all"
+                                value={item.volume_tugas}
+                                onChange={(e) => handleVolumeChange(monthNum, mitraId, index, parseInt(e.target.value) || 0)}
+                             />
+                        </td>
+                        <td className="px-4 py-3 align-top text-right text-gray-600 font-mono">
+                            {formatRupiah(item.tarif)}
+                        </td>
+                        <td className="px-4 py-3 align-top text-right font-bold text-gray-800 font-mono bg-gray-50/50">
+                            {formatRupiah(item.total_item)}
+                        </td>
+                        <td className="px-4 py-3 align-top text-center">
+                            <div className="flex items-center justify-center gap-2">
+                                <button 
+                                    onClick={() => handleSaveDetail(monthNum, mitraId, item)}
+                                    className="p-1.5 bg-blue-100 text-[#1A2A80] rounded hover:bg-[#1A2A80] hover:text-white transition-colors"
+                                    title="Simpan Perubahan"
+                                >
+                                    <FaSave size={12} />
+                                </button>
+                                <button 
+                                    onClick={() => handleDeleteDetail(monthNum, mitraId, item.id_kelompok)}
+                                    className="p-1.5 bg-red-100 text-red-600 rounded hover:bg-red-600 hover:text-white transition-colors"
+                                    title="Hapus Tugas"
+                                >
+                                    <FaTrash size={12} />
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                ))}
             </tbody>
           </table>
         </div>
@@ -291,18 +293,33 @@ const RekapPerencanaan = () => {
     );
   };
 
-  // LEVEL 2: TABEL MITRA (WITH PAGINATION)
   const renderMitraTable = (monthNum) => {
     const data = dataMitraCache[monthNum];
 
     if (!data) return <div className="p-6 text-center text-gray-400 text-sm animate-pulse">Memuat data mitra...</div>;
-    if (data.length === 0) return <div className="p-6 text-center text-gray-400 text-sm italic border-t">Tidak ada mitra bertugas di bulan ini.</div>;
+    
+    let filteredData = data;
+    if (filterStatus === 'Aman') {
+        filteredData = data.filter(m => m.status === 'Aman');
+    } else if (filterStatus === 'Over Limit') {
+        filteredData = data.filter(m => m.status !== 'Aman');
+    }
 
-    // --- LOGIKA PAGINATION ---
+    if (filteredData.length === 0) {
+        return (
+            <div className="p-6 text-center text-gray-400 text-sm italic border-t bg-gray-50">
+                {filterStatus === 'all' 
+                    ? 'Tidak ada mitra bertugas di bulan ini.' 
+                    : `Tidak ada mitra dengan status "${filterStatus}" di bulan ini.`
+                }
+            </div>
+        );
+    }
+
     const indexOfLastItem = mitraPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentData = data.slice(indexOfFirstItem, indexOfLastItem);
-    const totalPages = Math.ceil(data.length / itemsPerPage);
+    const currentData = filteredData.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredData.length / itemsPerPage);
 
     const handlePageChange = (newPage) => {
         if (newPage >= 1 && newPage <= totalPages) {
@@ -314,12 +331,12 @@ const RekapPerencanaan = () => {
       <div className="bg-blue-50/30 p-3 md:p-5 border-t border-b border-gray-100 shadow-inner">
          <div className="flex items-center justify-between mb-3 px-1">
             <h4 className="text-sm font-bold text-[#1A2A80] uppercase flex items-center gap-2">
-                <FaUserTie className="text-lg" /> Daftar Mitra ({data.length})
+                <FaUserTie className="text-lg" /> Daftar Mitra ({filteredData.length})
+                {filterStatus !== 'all' && <span className="text-xs bg-white border border-gray-200 text-gray-600 px-2 py-0.5 rounded-full capitalize shadow-sm">{filterStatus === 'Over Limit' ? 'Lebih' : filterStatus}</span>}
             </h4>
             <span className="text-xs text-gray-500 hidden sm:block">Klik baris untuk melihat detail</span>
          </div>
 
-         {/* RESPONSIVE TABLE CONTAINER */}
          <div className="overflow-x-auto rounded-xl border border-gray-200 shadow-sm bg-white">
             <table className="w-full text-sm text-left min-w-[600px]">
               <thead className="bg-[#1A2A80] text-white font-semibold uppercase text-xs tracking-wider">
@@ -335,7 +352,6 @@ const RekapPerencanaan = () => {
               <tbody className="divide-y divide-gray-100">
                 {currentData.map((m, idx) => {
                    const isExpanded = expandedMitra === `${monthNum}-${m.id_mitra}`;
-                   // Nomor urut continue sesuai page
                    const globalIdx = indexOfFirstItem + idx + 1; 
                    
                    return (
@@ -360,7 +376,6 @@ const RekapPerencanaan = () => {
                             </div>
                          </td>
                        </tr>
-                       {/* Nested Detail Row */}
                        {isExpanded && (
                          <tr>
                            <td colSpan="6" className="p-0 border-b border-gray-200">
@@ -375,11 +390,10 @@ const RekapPerencanaan = () => {
             </table>
          </div>
 
-         {/* --- PAGINATION FOOTER --- */}
-         {data.length > itemsPerPage && (
+         {filteredData.length > itemsPerPage && (
             <div className="flex flex-col sm:flex-row justify-between items-center gap-4 mt-4 px-2">
                 <div className="text-xs text-gray-500">
-                    Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, data.length)} dari <strong>{data.length}</strong> mitra
+                    Menampilkan {indexOfFirstItem + 1} - {Math.min(indexOfLastItem, filteredData.length)} dari <strong>{filteredData.length}</strong> mitra
                 </div>
                 <div className="flex items-center gap-2">
                     <button
@@ -409,70 +423,104 @@ const RekapPerencanaan = () => {
   return (
     <div className="w-full min-h-screen bg-gray-50/50 pb-20">
       
-      {/* --- HEADER & FILTER SECTION --- */}
-      <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative overflow-hidden">
-         {/* Decoration */}
+      <div className="bg-white p-5 md:p-6 rounded-2xl shadow-sm border border-gray-200 mb-6 flex flex-col relative overflow-hidden">
          <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50 rounded-bl-full -mr-8 -mt-8 pointer-events-none"></div>
 
-         <div className="relative z-10">
-            <h1 className="text-2xl font-extrabold text-gray-800 flex items-center gap-3">
-                <span className="p-2 bg-[#1A2A80] text-white rounded-lg shadow-md"><FaMoneyBillWave /></span> 
-                Rekap Perencanaan
-            </h1>
-            <p className="text-sm text-gray-500 mt-1 ml-1">Monitoring beban kerja, honor mitra, dan status limit bulanan.</p>
-         </div>
+         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 relative z-10">
+             <div>
+                <h1 className="text-2xl font-extrabold text-gray-800 flex items-center gap-3">
+                    <span className="p-2 bg-[#1A2A80] text-white rounded-lg shadow-md"><FaMoneyBillWave /></span> 
+                    Rekap Perencanaan
+                </h1>
+                <p className="text-sm text-gray-500 mt-1 ml-1">Monitoring beban kerja, honor mitra, dan status limit bulanan.</p>
+             </div>
 
-         <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto relative z-10">
-            {/* Input Limit (Read Only) */}
-            <div className="w-full sm:w-auto">
-               <label className="text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
-                 Batas Aman (Database) <FaInfoCircle className="text-blue-400 cursor-help" title="Diatur di menu Batas Honor" />
-               </label>
-               <div className="relative">
-                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">Rp</div>
-                   <input 
-                     type="text" 
-                     className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-gray-100 text-gray-600 cursor-not-allowed font-mono font-bold shadow-inner"
-                     value={limit.toLocaleString('id-ID')} 
-                     disabled
-                   />
-               </div>
-            </div>
+             <div className="flex flex-col sm:flex-row gap-4 w-full md:w-auto">
+                <div className="w-full sm:w-auto">
+                   <label className="text-xs font-bold text-gray-500 mb-1.5 flex items-center gap-1">
+                     Batas Aman (Database) <FaInfoCircle className="text-blue-400 cursor-help" title="Diatur di menu Batas Honor" />
+                   </label>
+                   <div className="relative">
+                       <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">Rp</div>
+                       <input 
+                         type="text" 
+                         className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-sm bg-gray-100 text-gray-600 cursor-not-allowed font-mono font-bold shadow-inner"
+                         value={limit.toLocaleString('id-ID')} 
+                         disabled
+                       />
+                   </div>
+                </div>
 
-            {/* Filter Tahun */}
-            <div className="w-full sm:w-auto">
-               <label className="text-xs font-bold text-gray-500 mb-1.5 block">Tahun Anggaran</label>
-               <div className="flex gap-2">
-                   <select 
-                     className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none shadow-sm cursor-pointer transition-all hover:border-gray-400"
-                     value={year}
-                     onChange={(e) => setYear(e.target.value)}
-                   >
-                     {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
-                   </select>
-                   <button 
-                        onClick={fetchBulan} 
-                        className="bg-[#1A2A80] hover:bg-blue-900 text-white px-4 rounded-xl shadow-md transition-transform active:scale-95 flex items-center justify-center" 
-                        title="Refresh Data"
-                   >
-                       <FaFilter />
-                   </button>
-               </div>
-            </div>
+                <div className="w-full sm:w-auto">
+                   <label className="text-xs font-bold text-gray-500 mb-1.5 block">Tahun Anggaran</label>
+                   <div className="flex gap-2">
+                       <select 
+                         className="flex-1 px-4 py-2.5 border border-gray-300 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none shadow-sm cursor-pointer transition-all hover:border-gray-400"
+                         value={year}
+                         onChange={(e) => setYear(e.target.value)}
+                       >
+                         {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                       </select>
+                   </div>
+                </div>
+             </div>
          </div>
       </div>
 
-      {/* --- MAIN CONTENT (LEVEL 1: BULAN) --- */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        {/* Header Table 1 */}
-        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 relative mb-10">
+        
+        <div className="bg-gray-50 px-6 py-4 border-b border-gray-200 flex justify-between items-center rounded-t-2xl z-20 relative">
             <h2 className="text-sm font-bold text-gray-600 uppercase tracking-wider flex items-center gap-2">
                 <FaCalendarAlt /> Ringkasan Bulanan
             </h2>
+
+            <div className="relative" ref={filterRef}>
+               <button 
+                    onClick={() => setShowFilterDropdown(!showFilterDropdown)} 
+                    className={`px-3 py-2 rounded-lg shadow-sm transition-all active:scale-95 flex items-center justify-center border gap-2 text-xs font-bold
+                        ${filterStatus !== 'all' 
+                            ? 'bg-blue-100 text-[#1A2A80] border-blue-200' 
+                            : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                        }`} 
+                    title="Filter Status Mitra"
+               >
+                   <FaFilter />
+                   {filterStatus !== 'all' ? (filterStatus === 'Over Limit' ? 'Lebih' : filterStatus) : 'Filter'}
+                   <FaChevronDown size={10} className={`transition-transform ${showFilterDropdown ? 'rotate-180' : ''}`} />
+               </button>
+
+               {showFilterDropdown && (
+                   <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 z-50 overflow-hidden animate-fade-in-down">
+                       <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                           Filter Status Mitra
+                       </div>
+                       <button 
+                           onClick={() => { setFilterStatus('all'); setShowFilterDropdown(false); }}
+                           className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 hover:bg-gray-50 transition-colors ${filterStatus === 'all' ? 'text-[#1A2A80] font-bold bg-blue-50' : 'text-gray-600'}`}
+                       >
+                           <div className={`w-2 h-2 rounded-full ${filterStatus === 'all' ? 'bg-[#1A2A80]' : 'bg-gray-300'}`}></div>
+                           Semua Data
+                       </button>
+                       <button 
+                           onClick={() => { setFilterStatus('Aman'); setShowFilterDropdown(false); }}
+                           className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 hover:bg-gray-50 transition-colors ${filterStatus === 'Aman' ? 'text-green-600 font-bold bg-green-50' : 'text-gray-600'}`}
+                       >
+                           <FaCheckCircle className="text-green-500" />
+                           Aman
+                       </button>
+                       <button 
+                           onClick={() => { setFilterStatus('Over Limit'); setShowFilterDropdown(false); }}
+                           className={`w-full text-left px-4 py-3 text-sm flex items-center gap-2 hover:bg-gray-50 transition-colors ${filterStatus === 'Over Limit' ? 'text-red-600 font-bold bg-red-50' : 'text-gray-600'}`}
+                       >
+                           <FaExclamationTriangle className="text-red-500" />
+                           Lebih (Over Limit)
+                       </button>
+                   </div>
+               )}
+            </div>
         </div>
 
-        {/* RESPONSIVE TABLE CONTAINER LEVEL 1 */}
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-b-2xl">
             <table className="w-full text-left min-w-[700px]">
                 <thead className="bg-white border-b border-gray-200 text-gray-500 uppercase text-xs font-bold tracking-wider">
                     <tr>
@@ -496,7 +544,9 @@ const RekapPerencanaan = () => {
                             </td>
                         </tr>
                     ) : (
-                        dataBulan.map((bulan) => {
+                        [...dataBulan]
+                          .sort((a, b) => a.bulan_angka - b.bulan_angka)
+                          .map((bulan) => {
                             const isExpanded = expandedMonth === bulan.bulan_angka;
                             return (
                                 <React.Fragment key={bulan.bulan_angka}>
@@ -533,7 +583,6 @@ const RekapPerencanaan = () => {
                                         </td>
                                     </tr>
                                     
-                                    {/* EXPANDED CONTENT (LEVEL 2) */}
                                     {isExpanded && (
                                         <tr>
                                             <td colSpan="5" className="p-0 border-b-2 border-blue-100 bg-gray-50">

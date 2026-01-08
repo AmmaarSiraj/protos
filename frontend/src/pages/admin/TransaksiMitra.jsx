@@ -1,5 +1,5 @@
 // src/pages/admin/TransaksiMitra.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -10,7 +10,9 @@ import {
   FaIdBadge, 
   FaCalendarAlt,
   FaChevronLeft,
-  FaChevronRight 
+  FaChevronRight,
+  FaBriefcase,
+  FaListUl
 } from 'react-icons/fa';
 
 const API_URL = import.meta.env.VITE_API_URL || 'https://makinasik.web.bps.go.id';
@@ -22,17 +24,81 @@ const TransaksiMitra = () => {
   const currentYear = new Date().getFullYear();
   const [filterTahun, setFilterTahun] = useState(currentYear);
   const [filterBulan, setFilterBulan] = useState('all');
+  const [filterKegiatan, setFilterKegiatan] = useState('all');
+  const [filterSubkegiatan, setFilterSubkegiatan] = useState('all');
   const [search, setSearch] = useState('');
 
   // --- STATE DATA ---
   const [transaksiData, setTransaksiData] = useState([]);
+  
+  // MASTER DATA (Di-load dinamis berdasarkan Tahun)
+  const [masterKegiatan, setMasterKegiatan] = useState([]); 
+  
   const [loading, setLoading] = useState(false);
 
   // --- STATE PAGINATION ---
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // --- FETCH TRANSAKSI ---
+  // =========================================================================
+  // 1. LOAD MASTER DATA FILTER (Dari Endpoint Transaksi Khusus)
+  //    Trigger: Saat komponen di-mount ATAU filterTahun berubah
+  // =========================================================================
+  useEffect(() => {
+    const fetchMasterData = async () => {
+        // Reset pilihan filter saat tahun berubah
+        setFilterKegiatan('all');
+        setFilterSubkegiatan('all');
+        setMasterKegiatan([]); // Kosongkan visual dropdown saat loading
+
+        try {
+            const token = localStorage.getItem('token');
+            
+            // Panggil endpoint khusus di TransaksiController dengan parameter tahun
+            const res = await axios.get(`${API_URL}/api/transaksi/filters`, {
+                headers: { Authorization: `Bearer ${token}` },
+                params: { tahun: filterTahun } // <-- Filter Tahun dikirim ke Backend
+            });
+            
+            setMasterKegiatan(res.data.data || []);
+        } catch (err) {
+            console.error("Gagal memuat filter kegiatan:", err);
+        }
+    };
+    
+    // Pastikan tahun ada sebelum fetch
+    if (filterTahun) {
+        fetchMasterData();
+    }
+  }, [filterTahun]); 
+
+  // =========================================================================
+  // 2. LOGIKA DROPDOWN (Client-Side)
+  // =========================================================================
+  
+  // Opsi Dropdown Kegiatan diambil langsung dari Master Data
+  const listKegiatan = masterKegiatan;
+
+  // Opsi Dropdown Subkegiatan dikalkulasi otomatis berdasarkan filterKegiatan yang dipilih
+  const listSubkegiatan = useMemo(() => {
+    if (filterKegiatan === 'all') return [];
+    
+    // Cari kegiatan yang dipilih di master data
+    const selected = masterKegiatan.find(k => String(k.id) === String(filterKegiatan));
+    
+    // Ambil subkegiatannya (jika ada)
+    return selected && selected.subkegiatan ? selected.subkegiatan : [];
+  }, [filterKegiatan, masterKegiatan]);
+
+  // Reset Subkegiatan ke 'all' jika Kegiatan berubah
+  useEffect(() => {
+    setFilterSubkegiatan('all');
+  }, [filterKegiatan]);
+
+
+  // =========================================================================
+  // 3. FETCH DATA TRANSAKSI (Tabel Utama)
+  // =========================================================================
   useEffect(() => {
     const fetchTransaksi = async () => {
       setLoading(true);
@@ -40,36 +106,42 @@ const TransaksiMitra = () => {
         const token = localStorage.getItem('token');
         const params = {
           tahun: filterTahun,
-          bulan: filterBulan !== 'all' ? filterBulan : undefined
+          bulan: filterBulan !== 'all' ? filterBulan : undefined,
+          kegiatan_id: filterKegiatan !== 'all' ? filterKegiatan : undefined,
+          subkegiatan_id: filterSubkegiatan !== 'all' ? filterSubkegiatan : undefined
         };
 
         const res = await axios.get(`${API_URL}/api/transaksi`, {
           headers: { Authorization: `Bearer ${token}` },
           params: params
         });
-        setTransaksiData(res.data);
+        
+        setTransaksiData(res.data || []);
+        
       } catch (err) {
-        console.error(err);
+        console.error("Gagal memuat transaksi:", err);
       } finally {
         setLoading(false);
       }
     };
 
     fetchTransaksi();
-  }, [filterTahun, filterBulan]);
+  }, [filterTahun, filterBulan, filterKegiatan, filterSubkegiatan]); 
 
-  // --- FILTER SEARCH CLIENT SIDE ---
+
+  // =========================================================================
+  // 4. FILTER PENCARIAN & PAGINATION (Client Side)
+  // =========================================================================
   const displayData = transaksiData.filter(item => 
     item.nama_lengkap.toLowerCase().includes(search.toLowerCase()) ||
     (item.sobat_id && item.sobat_id.toLowerCase().includes(search.toLowerCase()))
   );
 
-  // Reset ke halaman 1 jika filter atau search berubah
+  // Reset ke halaman 1 jika filter berubah
   useEffect(() => {
     setCurrentPage(1);
-  }, [filterTahun, filterBulan, search]);
+  }, [filterTahun, filterBulan, filterKegiatan, filterSubkegiatan, search]);
 
-  // --- LOGIKA PAGINATION ---
   const indexOfLastItem = currentPage * itemsPerPage;
   const indexOfFirstItem = indexOfLastItem - itemsPerPage;
   const currentData = displayData.slice(indexOfFirstItem, indexOfLastItem);
@@ -83,7 +155,6 @@ const TransaksiMitra = () => {
 
   const formatRupiah = (num) => new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(num);
 
-  // Ambil limit dari data pertama (karena seragam per response)
   const currentLimit = transaksiData.length > 0 ? transaksiData[0].limit_periode : 0;
 
   // Generate Opsi Tahun
@@ -99,7 +170,6 @@ const TransaksiMitra = () => {
     { val: '10', label: 'Oktober' }, { val: '11', label: 'November' }, { val: '12', label: 'Desember' }
   ];
 
-  // Tentukan Label Header Kolom Status
   const statusHeaderLabel = filterBulan === 'all' 
     ? "Persentase Pendapatan (Setahun)" 
     : "Status Limit (Bulanan)";
@@ -109,18 +179,19 @@ const TransaksiMitra = () => {
       
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-800">Monitoring Transaksi Mitra</h1>
-        <p className="text-sm text-gray-500">Pantau akumulasi honor mitra berdasarkan periode waktu.</p>
+        <p className="text-sm text-gray-500">Pantau akumulasi honor mitra berdasarkan periode waktu dan kegiatan.</p>
       </div>
 
       {/* --- PANEL FILTER --- */}
       <div className="bg-white p-5 rounded-xl shadow-sm border border-gray-200 mb-6">
         <div className="flex items-center gap-2 mb-4 text-[#1A2A80] font-bold text-sm uppercase tracking-wide border-b border-gray-100 pb-2">
-            <FaFilter /> Filter Periode
+            <FaFilter /> Filter Data
         </div>
         
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        {/* --- UPDATE LAYOUT: GRID 2 KOLOM --- */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             
-            {/* Filter Tahun */}
+            {/* 1. Filter Tahun */}
             <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">Tahun Anggaran</label>
                 <div className="relative">
@@ -135,17 +206,58 @@ const TransaksiMitra = () => {
                 </div>
             </div>
 
-            {/* Filter Bulan */}
+            {/* 2. Filter Bulan */}
             <div>
-                <label className="block text-xs font-bold text-gray-500 mb-1">Bulan (Opsional)</label>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Bulan</label>
                 <select 
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-gray-50 focus:bg-white transition"
                     value={filterBulan}
                     onChange={(e) => setFilterBulan(e.target.value)}
                 >
-                    <option value="all">-- Akumulasi Satu Tahun --</option>
+                    <option value="all">-- Semua Bulan --</option>
                     {months.map(m => <option key={m.val} value={m.val}>{m.label}</option>)}
                 </select>
+            </div>
+
+            {/* 3. Filter Survei/Sensus (Kegiatan) */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Survei / Sensus</label>
+                <div className="relative">
+                    <FaBriefcase className="absolute left-3 top-3 text-gray-400" />
+                    <select 
+                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-gray-50 focus:bg-white transition truncate"
+                        value={filterKegiatan}
+                        onChange={(e) => setFilterKegiatan(e.target.value)}
+                    >
+                        <option value="all">-- Pilih Survei (Sesuai Tahun) --</option>
+                        {listKegiatan.length > 0 ? (
+                             listKegiatan.map(k => (
+                                <option key={k.id} value={k.id}>{k.nama_kegiatan}</option>
+                            ))
+                        ) : (
+                            <option value="" disabled>Tidak ada kegiatan disetujui tahun ini</option>
+                        )}
+                    </select>
+                </div>
+            </div>
+
+            {/* 4. Filter Sub Kegiatan */}
+            <div>
+                <label className="block text-xs font-bold text-gray-500 mb-1">Kegiatan / Sub</label>
+                <div className="relative">
+                    <FaListUl className="absolute left-3 top-3 text-gray-400" />
+                    <select 
+                        className="w-full pl-9 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#1A2A80] outline-none text-sm bg-gray-50 focus:bg-white transition truncate disabled:bg-gray-100 disabled:text-gray-400"
+                        value={filterSubkegiatan}
+                        onChange={(e) => setFilterSubkegiatan(e.target.value)}
+                        disabled={filterKegiatan === 'all'}
+                    >
+                        <option value="all">-- Semua Sub Kegiatan --</option>
+                        {listSubkegiatan.length > 0 && listSubkegiatan.map(s => (
+                            <option key={s.id} value={s.id}>{s.nama_sub_kegiatan}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
         </div>
@@ -172,7 +284,7 @@ const TransaksiMitra = () => {
                 <thead className="bg-gray-50 text-gray-500 uppercase font-bold text-xs">
                     <tr>
                         <th className="px-6 py-3">Mitra</th>
-                        <th className="px-6 py-3 text-right">Pendapatan ({filterBulan !== 'all' ? months.find(m => m.val == filterBulan)?.label : 'Setahun'})</th>
+                        <th className="px-6 py-3 text-right">Pendapatan Terfilter</th>
                         <th className="px-6 py-3 text-center">{statusHeaderLabel}</th>
                         <th className="px-6 py-3 text-right">Aksi</th>
                     </tr>
