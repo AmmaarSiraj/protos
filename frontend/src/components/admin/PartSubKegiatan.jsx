@@ -1,12 +1,38 @@
 // src/components/admin/PartSubKegiatan.jsx
 import React from 'react';
 import { FaTrash, FaCalendarAlt } from 'react-icons/fa';
+import Swal from 'sweetalert2'; // [BARU] Import SweetAlert
 import PartAddHonor from './PartAddHonor';
 
 const PartSubKegiatan = ({ subKegiatans, setSubKegiatans }) => {
 
   const removeSubKegiatan = (id) => {
     setSubKegiatans(subKegiatans.filter(sub => sub.id !== id));
+  };
+
+  // [BARU] Fungsi Wrapper untuk Konfirmasi Hapus
+  const handleDeleteConfirmation = (id) => {
+    Swal.fire({
+      title: 'Hapus Rincian Ini?',
+      text: "Data ini akan dihapus dari daftar sementara.",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#d33',
+      cancelButtonColor: '#3085d6',
+      confirmButtonText: 'Ya, Hapus!',
+      cancelButtonText: 'Batal'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        removeSubKegiatan(id);
+        Swal.fire({
+            title: 'Terhapus!',
+            text: 'Rincian kegiatan telah dihapus.',
+            icon: 'success',
+            timer: 1000,
+            showConfirmButton: false
+        });
+      }
+    });
   };
 
   const handleChange = (id, field, value) => {
@@ -36,7 +62,8 @@ const PartSubKegiatan = ({ subKegiatans, setSubKegiatans }) => {
              </div>
              <button
                type="button"
-               onClick={() => removeSubKegiatan(sub.id)}
+               // [UBAH] Ganti onClick langsung dengan handleDeleteConfirmation
+               onClick={() => handleDeleteConfirmation(sub.id)}
                className="text-gray-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition"
                title="Hapus Kegiatan Ini"
              >
@@ -45,10 +72,10 @@ const PartSubKegiatan = ({ subKegiatans, setSubKegiatans }) => {
           </div>
 
           <div className="p-6">
-            {/* Form Kegiatan */}
+            {/* Form Kegiatan ... (Bagian bawah tidak berubah) */}
             <div className="grid grid-cols-1 gap-5 mb-6">
                 
-                {/* Baris 1: Nama Kegiatan (Sebelumnya Sub Kegiatan) */}
+                {/* Baris 1: Nama Kegiatan */}
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase mb-1.5">Nama Kegiatan <span className="text-red-500">*</span></label>
                     <input

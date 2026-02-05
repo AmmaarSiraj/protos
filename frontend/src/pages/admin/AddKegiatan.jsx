@@ -103,7 +103,7 @@ const AddKegiatan = () => {
           nama_kegiatan: indukData.nama_kegiatan,
           deskripsi: indukData.deskripsi
         }, config);
-        idKegiatan = resKeg.data.data.data.kegiatan.id;
+        idKegiatan = resKeg.data.data.id;
       }
 
       // 2. Simpan Sub Kegiatan & Honorarium

@@ -1,4 +1,3 @@
-// src/components/admin/PartAddHonor.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FaTrash, FaPlus, FaCoins, FaTag } from 'react-icons/fa';
@@ -42,12 +41,18 @@ const PartAddHonor = ({ honorList, onChange }) => {
     onChange([...honorList, newHonor]);
   };
 
-  const removeRow = (id) => {
-    onChange(honorList.filter(h => h.id !== id));
+  // PERBAIKAN: Gunakan index untuk menghapus agar lebih akurat jika ID duplikat/missing
+  const removeRow = (index) => {
+    const newList = [...honorList];
+    newList.splice(index, 1);
+    onChange(newList);
   };
 
-  const updateRow = (id, field, value) => {
-    onChange(honorList.map(h => h.id === id ? { ...h, [field]: value } : h));
+  // PERBAIKAN: Gunakan index untuk update agar hanya baris target yang berubah
+  const updateRow = (index, field, value) => {
+    const newList = [...honorList];
+    newList[index] = { ...newList[index], [field]: value };
+    onChange(newList);
   };
 
   return (
@@ -71,8 +76,9 @@ const PartAddHonor = ({ honorList, onChange }) => {
         </div>
       ) : (
         <div className="space-y-4">
-          {honorList.map((honor) => (
-            <div key={honor.id} className="bg-white p-4 rounded border border-gray-200 shadow-sm relative group hover:border-blue-300 transition">
+          {honorList.map((honor, index) => (
+            // Gunakan fallback index pada key untuk mencegah masalah rendering jika honor.id duplikat
+            <div key={honor.id || index} className="bg-white p-4 rounded border border-gray-200 shadow-sm relative group hover:border-blue-300 transition">
               
               {/* BARIS 1: Jabatan, Tarif, Volume */}
               <div className="flex flex-col md:flex-row gap-4 mb-4">
@@ -81,7 +87,7 @@ const PartAddHonor = ({ honorList, onChange }) => {
                   <label className="text-[10px] font-bold text-gray-400 block mb-1 uppercase">Jabatan</label>
                   <select
                     value={honor.kode_jabatan}
-                    onChange={(e) => updateRow(honor.id, 'kode_jabatan', e.target.value)}
+                    onChange={(e) => updateRow(index, 'kode_jabatan', e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none bg-gray-50 focus:bg-white"
                   >
                     <option value="">-- Pilih Jabatan --</option>
@@ -102,10 +108,10 @@ const PartAddHonor = ({ honorList, onChange }) => {
                     onFocus={(e) => e.target.select()}
                     onChange={(e) => {
                       const val = e.target.value;
-                      updateRow(honor.id, 'tarif', val === '' ? '' : parseFloat(val));
+                      updateRow(index, 'tarif', val === '' ? '' : parseFloat(val));
                     }}
                     onBlur={() => {
-                      if (honor.tarif === '' || honor.tarif === null) updateRow(honor.id, 'tarif', 0);
+                      if (honor.tarif === '' || honor.tarif === null) updateRow(index, 'tarif', 0);
                     }}
                     className="w-full px-3 py-2 border border-gray-300 rounded text-xs focus:ring-1 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none font-bold text-gray-700"
                   />
@@ -122,9 +128,9 @@ const PartAddHonor = ({ honorList, onChange }) => {
                       onFocus={(e) => e.target.select()}
                       onChange={(e) => {
                           const val = e.target.value;
-                          updateRow(honor.id, 'basis_volume', val === '' ? '' : parseInt(val));
+                          updateRow(index, 'basis_volume', val === '' ? '' : parseInt(val));
                       }}
-                      onBlur={() => { if (!honor.basis_volume) updateRow(honor.id, 'basis_volume', 1); }}
+                      onBlur={() => { if (!honor.basis_volume) updateRow(index, 'basis_volume', 1); }}
                       className="w-full px-3 py-2 border border-gray-300 rounded text-xs text-center outline-none focus:border-[#1A2A80]"
                     />
                   </div>
@@ -132,7 +138,7 @@ const PartAddHonor = ({ honorList, onChange }) => {
                      <label className="text-[10px] font-bold text-gray-400 block mb-1 uppercase">Satuan</label>
                      <select
                       value={honor.id_satuan}
-                      onChange={(e) => updateRow(honor.id, 'id_satuan', parseInt(e.target.value))}
+                      onChange={(e) => updateRow(index, 'id_satuan', parseInt(e.target.value))}
                       className="w-full px-3 py-2 border border-gray-300 rounded text-xs outline-none focus:border-[#1A2A80]"
                     >
                       {satuanOptions.map(s => (
@@ -153,13 +159,13 @@ const PartAddHonor = ({ honorList, onChange }) => {
                         type="text"
                         placeholder="Contoh: 2903.BMA.009.005.521213"
                         value={honor.beban_anggaran || ''}
-                        onChange={(e) => updateRow(honor.id, 'beban_anggaran', e.target.value)}
+                        onChange={(e) => updateRow(index, 'beban_anggaran', e.target.value)}
                         className="w-full px-3 py-2 border border-gray-300 rounded text-xs font-mono text-gray-600 focus:ring-1 focus:ring-[#1A2A80] focus:border-[#1A2A80] outline-none"
                       />
                   </div>
                   <button 
                     type="button" 
-                    onClick={() => removeRow(honor.id)}
+                    onClick={() => removeRow(index)}
                     className="text-gray-400 hover:text-red-500 p-2 transition bg-gray-50 hover:bg-red-50 rounded border border-gray-200"
                     title="Hapus baris honor ini"
                   >

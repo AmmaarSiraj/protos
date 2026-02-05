@@ -51,6 +51,20 @@ class HonorariumController extends Controller
 
     public function store(Request $request)
     {
+        // 1. CEK DUPLIKASI: Pastikan kombinasi Sub Kegiatan + Jabatan belum wujud
+        // Ini menghalang jabatan yang sama didaftarkan dua kali dalam satu kegiatan
+        $isDuplicate = Honorarium::where('id_subkegiatan', $request->id_subkegiatan)
+                            ->where('kode_jabatan', $request->kode_jabatan)
+                            ->exists();
+
+        if ($isDuplicate) {
+            return response()->json([
+                'status' => 'error',
+                'error'  => 'Jabatan ini sudah terdaftar di kegiatan ini. Sila edit baris yang sudah ada.'
+            ], 422);
+        }
+
+        // 2. VALIDASI INPUT STANDAR
         $validator = Validator::make($request->all(), [
             'id_subkegiatan' => 'required|exists:subkegiatan,id',
             'kode_jabatan'   => 'required|exists:jabatan_mitra,kode_jabatan',
@@ -64,12 +78,13 @@ class HonorariumController extends Controller
             return response()->json(['errors' => $validator->errors()], 422);
         }
 
+        // 3. SIMPAN DATA JIKA TIADA MASALAH
         $honor = Honorarium::create($request->all());
 
         return response()->json([
-            'status' => 'success',
+            'status'  => 'success',
             'message' => 'Honorarium berhasil ditambahkan',
-            'data' => $honor
+            'data'    => $honor
         ], 201);
     }
 

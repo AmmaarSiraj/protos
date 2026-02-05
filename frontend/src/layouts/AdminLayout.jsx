@@ -24,7 +24,7 @@ const menuItems = [
   { path: "/admin/manajemen-satuan", label: "Satuan Honor", icon: <FaRulerCombined /> },
   { path: "/admin/batas-honor", label: "Atur Batas Honor", icon: <FaSlidersH /> },
   { path: "/admin/manage-users", label: "Manajemen User", icon: <FaUsers /> },
-  { path: "/admin/system-settings", label: "Pengaturan Sistem", icon: <FaCogs /> },
+  // { path: "/admin/system-settings", label: "Pengaturan Sistem", icon: <FaCogs /> },
 ];
 
 const AdminHeader = ({ title, toggleSidebar, isProfileExpanded, setIsProfileExpanded, isSidebarCollapsed, toggleCollapse }) => {
