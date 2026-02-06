@@ -185,18 +185,47 @@ const Perencanaan = () => {
       });
 
       const { valid_data, warnings } = res.data;
-      setPreviewData(valid_data || []);
-      setImportWarnings(warnings || []);
 
-      if (valid_data && valid_data.length > 0) {
-        setImportStep('preview');
-      } else {
-        Swal.fire('Gagal', 'Tidak ada data valid yang ditemukan dalam file.', 'error');
+      // JIKA TIDAK ADA DATA VALID (Seperti response yang Anda berikan)
+      if (!valid_data || valid_data.length === 0) {
+        let warningHtml = '';
+
+        // Ambil list dari array warnings
+        if (warnings && warnings.length > 0) {
+          warningHtml = `
+                    <div class="text-left mt-3 max-h-60 overflow-y-auto border-t pt-2">
+                        <p class="text-xs font-bold text-gray-600 mb-2">Detail Kesalahan Baris:</p>
+                        <ul class="list-disc list-inside text-[11px] text-red-600 space-y-2">
+                            ${warnings.map(w => `<li>${w}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+        }
+
+        Swal.fire({
+          title: 'Import Gagal',
+          html: `
+                    <div class="text-sm text-gray-700">
+                        Tidak ada data valid yang ditemukan dalam file Excel Anda. 
+                        Pastikan nama <b>Kegiatan</b> dan <b>Sub Kegiatan</b> sudah sesuai dengan master data.
+                    </div>
+                    ${warningHtml}
+                `,
+          icon: 'error',
+          confirmButtonColor: '#1A2A80',
+          width: '600px'
+        });
+        return; // Hentikan proses
       }
+
+      // JIKA ADA DATA VALID
+      setPreviewData(valid_data);
+      setImportWarnings(warnings || []);
+      setImportStep('preview');
 
     } catch (err) {
       console.error(err);
-      Swal.fire('Error', err.response?.data?.message || 'Gagal memproses file.', 'error');
+      Swal.fire('Error', err.response?.data?.message || 'Gagal menghubungi server.', 'error');
     } finally {
       setIsProcessing(false);
     }
@@ -230,7 +259,6 @@ const Perencanaan = () => {
     }
   };
 
-  // Fungsi Helper untuk menyesuaikan lebar kolom
   const autoFitColumns = (jsonData, worksheet) => {
     if (!jsonData || jsonData.length === 0) return;
 
@@ -252,18 +280,18 @@ const Perencanaan = () => {
 
     worksheet["!cols"] = objectMaxLength.map((w) => ({ wch: w + 5 }));
   };
-  
+
   const handleDownloadTemplate = async () => {
     const rows = [
       {
-        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
+        "Survei/Sensus": "[CONTOH] (SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
         "Kegiatan": "UPDATING/LISTING - TRIWULAN I",
         "sobat_id": "3373xxx",
         "jabatan": "Petugas Pendataan Lapangan (PPL Survei)",
         "volume": 1
       },
       {
-        "Survei/Sensus": "(SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
+        "Survei/Sensus": "[CONTOH] (SAKERNAS26-TW) SURVEI ANGKATAN KERJA NASIONAL (SAKERNAS) TAHUN 2026",
         "Kegiatan": "UPDATING/LISTING - TRIWULAN I",
         "sobat_id": "3373xxx",
         "jabatan": "Petugas Pemeriksaan Lapangan (PML Survei)",
@@ -281,29 +309,30 @@ const Perencanaan = () => {
 
       const token = getToken();
 
-      const [resHonor, resJabatan, resSatuan] = await Promise.all([
-        axios.get(`${API_URL}/api/honorarium`, { headers: { Authorization: `Bearer ${token}` } }),
+      const [resSubKegiatan, resMitra, resJabatan, resSatuan] = await Promise.all([
+        axios.get(`${API_URL}/api/subkegiatan`, { headers: { Authorization: `Bearer ${token}` } }),
+        axios.get(`${API_URL}/api/mitra`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${API_URL}/api/jabatan`, { headers: { Authorization: `Bearer ${token}` } }),
         axios.get(`${API_URL}/api/satuan-kegiatan`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
-      const honorData = resHonor.data.data || resHonor.data;
+      const subKegiatanData = resSubKegiatan.data.data || resSubKegiatan.data;
+      const mitraData = resMitra.data.data || resMitra.data;
       const jabatanData = resJabatan.data.data || resJabatan.data;
       const satuanData = resSatuan.data.data || resSatuan.data;
 
       // ... (Bagian mapping masterRows, jabatanRows, satuanRows tetap sama) ...
-      const masterRows = honorData.map(item => ({
+      const masterRows = subKegiatanData.map(item => ({
         "Survei/Sensus": item.nama_kegiatan || '-',
         "Kegiatan": item.nama_sub_kegiatan || '-',
         "Deskripsi": item.deskripsi || '',
-        "Tanggal Mulai": item.tanggal_mulai || '-',
-        "Tanggal Selesai": item.tanggal_selesai || '-',
-        "Jabatan": item.nama_jabatan || '-',
-        "Tarif": item.tarif || 0,
-        "Satuan": item.nama_satuan || '-',
-        "Basis Volume": item.basis_volume || 0,
-        "Beban Anggaran": item.beban_anggaran || '-'
+        "Tanggal Mulai Pencairan Honor": item.tanggal_mulai || '-',
+        "Tanggal Selesai Pencairan Honor": item.tanggal_selesai || '-'
       }));
+
+      const mitraRows = mitraData
+        .map(mit => ({ "Nama Mitra": mit.nama_lengkap, "Kode": mit.sobat_id }))
+        .sort((a, b) => a["Nama Mitra"].localeCompare(b["Sobat ID"]));
 
       const jabatanRows = jabatanData
         .map(jab => ({ "Nama Jabatan": jab.nama_jabatan, "Kode": jab.kode_jabatan }))
@@ -335,6 +364,12 @@ const Perencanaan = () => {
       // Tambahkan filter juga di master agar mudah dicari
       if (wsMaster['!ref']) wsMaster['!autofilter'] = { ref: wsMaster['!ref'] };
       XLSX.utils.book_append_sheet(workbook, wsMaster, "master_kegiatan");
+
+      const wsMitra = XLSX.utils.json_to_sheet(mitraRows);
+      autoFitColumns(mitraRows, wsMitra);
+      // Tambahkan filter juga di master agar mudah dicari
+      if (wsMitra['!ref']) wsMitra['!autofilter'] = { ref: wsMitra['!ref'] };
+      XLSX.utils.book_append_sheet(workbook, wsMitra, "master_mitra");
 
       const wsJabatan = XLSX.utils.json_to_sheet(jabatanRows);
       autoFitColumns(jabatanRows, wsJabatan);
@@ -453,78 +488,78 @@ const Perencanaan = () => {
   };
 
   const handleForwardToPenugasan = async (e, idsArray, title) => {
-  e.stopPropagation();
+    e.stopPropagation();
 
-  let warningMessages = [];
-  let hasBlockingError = false;
+    let warningMessages = [];
+    let hasBlockingError = false;
 
-  idsArray.forEach(id => {
-    const plan = allPerencanaan.find(p => p.id_perencanaan === id);
-    if (!plan) return;
+    idsArray.forEach(id => {
+      const plan = allPerencanaan.find(p => p.id_perencanaan === id);
+      if (!plan) return;
 
-    // --- 1. CEK STATUS DI MENU PENUGASAN (BLOCKING) ---
-    // Cari apakah subkegiatan ini sudah ada di penugasan dan berstatus disetujui
-    const existingApprovedTask = allPenugasan.find(
-      pg => pg.id_subkegiatan === plan.id_subkegiatan && pg.status_penugasan === 'disetujui'
-    );
+      // --- 1. CEK STATUS DI MENU PENUGASAN (BLOCKING) ---
+      // Cari apakah subkegiatan ini sudah ada di penugasan dan berstatus disetujui
+      const existingApprovedTask = allPenugasan.find(
+        pg => pg.id_subkegiatan === plan.id_subkegiatan && pg.status_penugasan === 'disetujui'
+      );
 
-    if (existingApprovedTask) {
-      warningMessages.push(`⛔ <b>${plan.nama_sub_kegiatan}</b>: Penugasan untuk subkegiatan ini sudah disetujui di menu Penugasan.`);
-      hasBlockingError = true;
-    }
+      if (existingApprovedTask) {
+        warningMessages.push(`⛔ <b>${plan.nama_sub_kegiatan}</b>: Penugasan untuk subkegiatan ini sudah disetujui di menu Penugasan.`);
+        hasBlockingError = true;
+      }
 
-    // --- 2. VALIDASI VOLUME (BLOCKING jika Over) ---
-    if (plan.total_alokasi > plan.target_volume) {
-      warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume melebihi target (${plan.total_alokasi}/${plan.target_volume}).`);
-      hasBlockingError = true; 
-    } else if (plan.total_alokasi < plan.target_volume) {
-      warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume belum terpenuhi (${plan.total_alokasi}/${plan.target_volume}).`);
-    }
+      // --- 2. VALIDASI VOLUME (BLOCKING jika Over) ---
+      if (plan.total_alokasi > plan.target_volume) {
+        warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume melebihi target (${plan.total_alokasi}/${plan.target_volume}).`);
+        hasBlockingError = true;
+      } else if (plan.total_alokasi < plan.target_volume) {
+        warningMessages.push(`⚠️ <b>${plan.nama_sub_kegiatan}</b>: Volume belum terpenuhi (${plan.total_alokasi}/${plan.target_volume}).`);
+      }
 
-    // --- 3. VALIDASI PENDAPATAN (BLOCKING jika Over) ---
-    const members = membersCache[id] || [];
-    const taskDate = new Date(plan.tanggal_mulai);
-    const y = taskDate.getFullYear();
-    const m = taskDate.getMonth();
-    const monthlyLimit = limitMap[y] || 0;
+      // --- 3. VALIDASI PENDAPATAN (BLOCKING jika Over) ---
+      const members = membersCache[id] || [];
+      const taskDate = new Date(plan.tanggal_mulai);
+      const y = taskDate.getFullYear();
+      const m = taskDate.getMonth();
+      const monthlyLimit = limitMap[y] || 0;
 
-    if (monthlyLimit > 0) {
-      members.forEach(member => {
-        const key = `${member.id_mitra}-${y}-${m}`;
-        const totalIncome = incomeStats[key] || 0;
+      if (monthlyLimit > 0) {
+        members.forEach(member => {
+          const key = `${member.id_mitra}-${y}-${m}`;
+          const totalIncome = incomeStats[key] || 0;
 
-        if (totalIncome > monthlyLimit) {
-          warningMessages.push(`⚠️ <b>${member.nama_lengkap}</b>: Pendapatan Total (${formatRupiah(totalIncome)}) melebihi batas.`);
-          hasBlockingError = true;
-        }
-      });
-    }
-  });
+          if (totalIncome > monthlyLimit) {
+            warningMessages.push(`⚠️ <b>${member.nama_lengkap}</b>: Pendapatan Total (${formatRupiah(totalIncome)}) melebihi batas.`);
+            hasBlockingError = true;
+          }
+        });
+      }
+    });
 
-  if (warningMessages.length > 0) {
-    const uniqueWarnings = [...new Set(warningMessages)];
+    if (warningMessages.length > 0) {
+      const uniqueWarnings = [...new Set(warningMessages)];
 
-    if (hasBlockingError) {
-      await Swal.fire({
-        title: 'Tidak Dapat Meneruskan',
-        html: `
+      if (hasBlockingError) {
+        await Swal.fire({
+          title: 'Tidak Dapat Meneruskan',
+          html: `
           <div style="text-align:left; font-size:13px; max-height:200px; overflow-y:auto;">
               Proses dihentikan karena terdapat data yang sudah disetujui atau melanggar batas:<br/><br/>
               ${uniqueWarnings.join('<br/>')}
           </div>
         `,
-        icon: 'error',
-        showConfirmButton: false, // Tombol "Ya" HILANG sesuai permintaan
-        showCancelButton: true,
-        cancelButtonColor: '#d33',
-        cancelButtonText: 'Tutup'
-      });
-      return; 
-    } else {
-      // Jika hanya warning (misal volume kurang), tombol tetap muncul
-      const confirmResult = await Swal.fire({
-        title: 'Peringatan Volume',
-        html: `
+          icon: 'error',
+          showConfirmButton: false, // Tombol "Ya" HILANG sesuai permintaan
+          showCancelButton: true,
+          cancelButtonColor: '#d33',
+          cancelButtonText: 'Tutup'
+        });
+        return;
+      } else {
+        // Jika hanya warning (misal volume kurang), tombol tetap muncul
+        const confirmResult = await Swal.fire({
+          title: 'Peringatan Volume',
+          html: `
             <div style="text-align:left; font-size:13px; max-height:200px; overflow-y:auto;">
                 Beberapa target belum sepenuhnya terpenuhi:<br/><br/>
                 ${uniqueWarnings.join('<br/>')}
@@ -532,45 +567,45 @@ const Perencanaan = () => {
                 <b>Apakah Anda ingin tetap meneruskan data ini?</b>
             </div>
         `,
-        icon: 'warning',
+          icon: 'warning',
+          showCancelButton: true,
+          confirmButtonColor: '#f59e0b',
+          cancelButtonColor: '#d33',
+          confirmButtonText: 'Ya, Tetap Teruskan',
+          cancelButtonText: 'Batal'
+        });
+
+        if (!confirmResult.isConfirmed) return;
+      }
+    } else {
+      // KONDISI BERSIH
+      const finalConfirm = await Swal.fire({
+        title: 'Teruskan ke Penugasan?',
+        html: `Anda akan menyalin data perencanaan <b>${title}</b> ke menu Penugasan.`,
+        icon: 'question',
         showCancelButton: true,
-        confirmButtonColor: '#f59e0b',
-        cancelButtonColor: '#d33',
-        confirmButtonText: 'Ya, Tetap Teruskan',
-        cancelButtonText: 'Batal'
+        confirmButtonColor: '#1A2A80',
+        confirmButtonText: 'Ya, Teruskan'
       });
-
-      if (!confirmResult.isConfirmed) return;
+      if (!finalConfirm.isConfirmed) return;
     }
-  } else {
-    // KONDISI BERSIH
-    const finalConfirm = await Swal.fire({
-      title: 'Teruskan ke Penugasan?',
-      html: `Anda akan menyalin data perencanaan <b>${title}</b> ke menu Penugasan.`,
-      icon: 'question',
-      showCancelButton: true,
-      confirmButtonColor: '#1A2A80',
-      confirmButtonText: 'Ya, Teruskan'
-    });
-    if (!finalConfirm.isConfirmed) return;
-  }
 
-  // EKSEKUSI API
-  try {
-    const token = getToken();
-    const response = await axios.post(`${API_URL}/api/penugasan/import-perencanaan`, {
-      ids_perencanaan: idsArray
-    }, { headers: { Authorization: `Bearer ${token}` } });
+    // EKSEKUSI API
+    try {
+      const token = getToken();
+      const response = await axios.post(`${API_URL}/api/penugasan/import-perencanaan`, {
+        ids_perencanaan: idsArray
+      }, { headers: { Authorization: `Bearer ${token}` } });
 
-    Swal.fire('Berhasil!', response.data.message, 'success');
-    // Refresh data penugasan setelah import
-    const resPenugasan = await axios.get(`${API_URL}/api/penugasan`, { headers: { Authorization: `Bearer ${token}` } });
-    setAllPenugasan(resPenugasan.data.data || []);
+      Swal.fire('Berhasil!', response.data.message, 'success');
+      // Refresh data penugasan setelah import
+      const resPenugasan = await axios.get(`${API_URL}/api/penugasan`, { headers: { Authorization: `Bearer ${token}` } });
+      setAllPenugasan(resPenugasan.data.data || []);
 
-  } catch (err) {
-    Swal.fire('Gagal', err.response?.data?.message || 'Gagal meneruskan data.', 'error');
-  }
-};
+    } catch (err) {
+      Swal.fire('Gagal', err.response?.data?.message || 'Gagal meneruskan data.', 'error');
+    }
+  };
 
   if (isLoading) return <div className="text-center py-10 text-gray-500">Memuat data Perencanaan...</div>;
 
@@ -634,7 +669,7 @@ const Perencanaan = () => {
                   <span className="text-[#1A2A80]"><FaClipboardList size={18} /></span>
                   <h2 className="text-lg font-bold text-gray-800">{kegiatanName}</h2>
                   <span className="text-xs font-medium bg-white text-gray-600 border border-gray-200 px-2 py-0.5 rounded-full">
-                    {subItems.length} Tim
+                    {subItems.length} Kegiatan
                   </span>
                 </div>
                 <button
@@ -670,13 +705,35 @@ const Perencanaan = () => {
                         className={`px-6 py-4 cursor-pointer transition-colors flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 ${isOpen ? 'bg-blue-50/40' : 'hover:bg-gray-50'}`}
                       >
                         <div className="flex-1">
-                          <div className="flex items-center gap-3 mb-1">
+                          <div className="flex items-center gap-4 mb-2">
+                            {/* Ikon Chevron di paling kiri */}
                             <div className={`p-1 rounded-full transition-transform duration-200 ${isOpen ? 'rotate-180 text-[#1A2A80] bg-blue-100' : 'text-gray-400'}`}>
                               <FaChevronDown size={10} />
                             </div>
-                            <h3 className={`font-bold text-sm ${isOpen ? 'text-[#1A2A80]' : 'text-gray-700'}`}>
+
+                            {/* Judul Kegiatan (Kiri) */}
+                            <h3 className={`font-bold text-sm min-w-[150px] uppercase ${isOpen ? 'text-[#1A2A80]' : 'text-gray-700'}`}>
                               {task.nama_sub_kegiatan}
                             </h3>
+
+                            {/* Kontainer Progres Bar & Info (Kanan - Mengambil sisa ruang) */}
+                            <div className="flex-grow flex flex-col items-start">
+                              {/* Info Teks (Rata Kanan di atas Bar) */}
+                              <div className="mb-1">
+                                <span className={`text-[11px] font-bold ${percentageVolume > 100 ? 'text-red-500' : 'text-[#1A2A80]'}`}>
+                                  {realisasi} Teralokasi / {target} Kuota
+                                </span>
+                                <span className="text-[10px] text-gray-500 ml-1">({percentageVolume}%)</span>
+                              </div>
+
+                              {/* Progress Bar (Rata Kanan) */}
+                              <div className="w-full max-w-[400px] bg-gray-200 rounded-full h-2.5 overflow-hidden">
+                                <div
+                                  className={`h-2.5 rounded-full transition-all duration-500 ${barColorVolume}`}
+                                  style={{ width: `${Math.min(percentageVolume, 100)}%` }}
+                                ></div>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="pl-7 flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500">
@@ -684,7 +741,7 @@ const Perencanaan = () => {
                               📅 {formatDate(task.tanggal_mulai)} - {formatDate(task.tanggal_selesai)}
                             </span>
                             <span className="flex items-center gap-1">
-                              👤 Pengawas: <span className="font-medium text-gray-700">{task.nama_pengawas}</span>
+                              👤 Dibuat oleh: <span className="font-medium text-gray-700">{task.nama_pengawas}</span>
                             </span>
                           </div>
                         </div>
@@ -710,26 +767,7 @@ const Perencanaan = () => {
                       {isOpen && (
                         <div className="bg-gray-50/30 px-6 py-5 border-t border-gray-100 text-sm animate-fade-in-down pl-6 sm:pl-14">
 
-                          <div className="mb-6 bg-white p-4 rounded-lg border border-gray-200 shadow-sm">
-                            <div className="flex justify-between items-end mb-2">
-                              <div>
-                                <h4 className="text-xs font-bold text-gray-700 uppercase tracking-wider mb-1">Progres Volume Kegiatan</h4>
-                                <p className="text-[10px] text-gray-400">Realisasi penugasan vs Target Subkegiatan.</p>
-                              </div>
-                              <div className="text-right">
-                                <span className={`text-sm font-bold ${percentageVolume > 100 ? 'text-red-500' : 'text-[#1A2A80]'}`}>
-                                  {realisasi} / {target}
-                                </span>
-                                <span className="text-xs text-gray-500 ml-1">({percentageVolume}%)</span>
-                              </div>
-                            </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2.5 overflow-hidden">
-                              <div
-                                className={`h-2.5 rounded-full transition-all duration-500 ${barColorVolume}`}
-                                style={{ width: `${Math.min(percentageVolume, 100)}%` }}
-                              ></div>
-                            </div>
-                          </div>
+
 
                           <div className="flex justify-between items-center mb-4">
                             <h4 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Daftar Anggota Tim & Status Honor Bulanan:</h4>
@@ -737,7 +775,7 @@ const Perencanaan = () => {
                               to={`/admin/perencanaan/detail/${task.id_perencanaan}`}
                               className="text-[#1A2A80] font-bold text-xs hover:underline flex items-center gap-1 bg-white px-3 py-1.5 rounded border border-gray-200 shadow-sm hover:bg-blue-50 transition"
                             >
-                              Kelola Tim & Print SPK <FaArrowRight size={10} />
+                              Kelola Tim <FaArrowRight size={10} />
                             </Link>
                           </div>
 
@@ -770,7 +808,7 @@ const Perencanaan = () => {
                                             </p>
                                             {m.volume_tugas > 0 && (
                                               <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 rounded border border-blue-100">
-                                                Vol: {m.volume_tugas}
+                                                Vol: {m.volume_tugas} {m.nama_satuan}
                                               </span>
                                             )}
                                           </div>
