@@ -102,7 +102,7 @@ const PartSubKegiatan = ({ subKegiatans, setSubKegiatans }) => {
                 {/* Jadwal Pelaksanaan */}
                 <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                     <p className="text-xs font-bold text-gray-600 flex items-center gap-2 mb-3 uppercase tracking-wide">
-                        <FaCalendarAlt className="text-[#1A2A80]" /> Jadwal Pelaksanaan (Acuan Periode)
+                        <FaCalendarAlt className="text-[#1A2A80]" /> Periode Honor Dibayarkan (Acuan Periode)
                     </p>
                     <div className="grid grid-cols-2 gap-3">
                         <div>

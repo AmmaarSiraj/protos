@@ -604,7 +604,7 @@ const ManageKegiatan = () => {
                           <thead className="bg-gray-50 text-gray-500 uppercase text-xs font-bold border-b border-gray-200">
                             <tr>
                               <th className="px-4 py-3 w-1/3">Nama Kegiatan</th>
-                              <th className="px-4 py-3">Jadwal Pelaksanaan</th>
+                              <th className="px-4 py-3">Periode Honor Dibayarkan</th>
                               <th className="px-4 py-3 text-center">Status</th>
                               <th className="px-4 py-3 text-right">Aksi</th>
                             </tr>
